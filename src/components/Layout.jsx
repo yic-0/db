@@ -1,52 +1,64 @@
 import { Outlet, NavLink } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
+import Icon from './Icon'
 
 export default function Layout() {
   const { profile, signOut, hasRole } = useAuthStore()
 
   const navLinks = [
-    { to: '/', label: 'Dashboard', icon: '📊' },
-    { to: '/calendar', label: 'Calendar', icon: '📅' },
-    { to: '/practices', label: 'Practices', icon: '🚣' },
+    { to: '/', label: 'Dashboard', icon: 'dashboard' },
+    { to: '/calendar', label: 'Calendar', icon: 'calendar' },
+    { to: '/practices', label: 'Practices', icon: 'practice' },
     // Only show Practice Management for coaches and admins
     ...(hasRole('admin') || hasRole('coach')
-      ? [{ to: '/practice-prep', label: 'Manage Practice', icon: '📝' }]
+      ? [{ to: '/practice-prep', label: 'Manage', icon: 'manage' }]
       : []
     ),
-    { to: '/events', label: 'Events', icon: '🏆' },
-    { to: '/workouts', label: 'Workouts', icon: '💪' },
-    { to: '/roster', label: 'Roster', icon: '👥' },
-    { to: '/lineups', label: 'Lineups', icon: '📋' },
-    { to: '/announcements', label: 'Announcements', icon: '📢' },
+    { to: '/events', label: 'Events', icon: 'events' },
+    { to: '/workouts', label: 'Workouts', icon: 'workouts' },
+    { to: '/roster', label: 'Roster', icon: 'roster' },
+    { to: '/lineups', label: 'Lineups', icon: 'lineups' },
+    { to: '/announcements', label: 'News', icon: 'announcements' },
   ]
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen">
       {/* Header */}
-      <header className="bg-white shadow-sm border-b border-gray-200">
+      <header className="glass sticky top-0 z-50 border-b border-gray-200/50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
-            <div className="flex items-center">
-              <h1 className="text-xl font-bold text-gray-900">
-                🐉 Dragon Boat Team
-              </h1>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-gradient-to-br from-primary-500 to-accent-500 rounded-xl flex items-center justify-center shadow-lg shadow-primary-500/20">
+                <Icon name="boat" size={24} className="text-white" />
+              </div>
+              <div>
+                <h1 className="text-lg font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
+                  Dragon Boat Team
+                </h1>
+                <p className="text-xs text-gray-500 -mt-0.5">Team Management</p>
+              </div>
             </div>
 
-            <div className="flex items-center gap-4">
-              <span className="text-sm text-gray-600">
-                {profile?.full_name}
-              </span>
+            <div className="flex items-center gap-3">
+              <div className="hidden sm:flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded-lg">
+                <div className="w-2 h-2 bg-success-500 rounded-full animate-pulse"></div>
+                <span className="text-sm font-medium text-gray-700">
+                  {profile?.full_name}
+                </span>
+              </div>
               <NavLink
                 to="/profile"
-                className="text-sm text-primary-600 hover:text-primary-700"
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                title="Profile"
               >
-                Profile
+                <Icon name="profile" size={20} className="text-gray-600" />
               </NavLink>
               <button
                 onClick={signOut}
-                className="text-sm text-gray-600 hover:text-gray-900"
+                className="p-2 hover:bg-red-50 rounded-lg transition-colors group"
+                title="Sign Out"
               >
-                Sign Out
+                <Icon name="logout" size={20} className="text-gray-600 group-hover:text-red-600" />
               </button>
             </div>
           </div>
@@ -54,24 +66,22 @@ export default function Layout() {
       </header>
 
       {/* Navigation */}
-      <nav className="bg-white border-b border-gray-200">
+      <nav className="glass border-b border-gray-200/50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex space-x-8">
+          <div className="flex gap-1 overflow-x-auto py-2 scrollbar-hide">
             {navLinks.map((link) => (
               <NavLink
                 key={link.to}
                 to={link.to}
                 end={link.to === '/'}
                 className={({ isActive }) =>
-                  `flex items-center gap-2 py-4 px-1 border-b-2 text-sm font-medium transition-colors ${
-                    isActive
-                      ? 'border-primary-500 text-primary-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  `nav-link whitespace-nowrap ${
+                    isActive ? 'nav-link-active' : 'nav-link-inactive'
                   }`
                 }
               >
-                <span>{link.icon}</span>
-                {link.label}
+                <Icon name={link.icon} size={18} />
+                <span>{link.label}</span>
               </NavLink>
             ))}
           </div>
