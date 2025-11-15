@@ -6,6 +6,7 @@ export default function Layout() {
 
   const navLinks = [
     { to: '/', label: 'Dashboard', icon: '📊' },
+    { to: '/calendar', label: 'Calendar', icon: '📅' },
     { to: '/practices', label: 'Practices', icon: '🚣' },
     // Only show Practice Management for coaches and admins
     ...(hasRole('admin') || hasRole('coach')
@@ -13,6 +14,7 @@ export default function Layout() {
       : []
     ),
     { to: '/events', label: 'Events', icon: '🏆' },
+    { to: '/workouts', label: 'Workouts', icon: '💪' },
     { to: '/roster', label: 'Roster', icon: '👥' },
     { to: '/lineups', label: 'Lineups', icon: '📋' },
     { to: '/announcements', label: 'Announcements', icon: '📢' },

@@ -1,0 +1,1315 @@
+import { useState, useEffect, useMemo } from 'react'
+import { useAuthStore } from '../store/authStore'
+import { useCalendarStore } from '../store/calendarStore'
+import { usePracticeStore } from '../store/practiceStore'
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek, isToday } from 'date-fns'
+
+export default function Calendar() {
+  const { user, hasRole } = useAuthStore()
+  const {
+    prospectiveRaces,
+    confirmedRaces,
+    calendarSettings,
+    fetchProspectiveRaces,
+    fetchConfirmedRaces,
+    fetchCalendarSettings,
+    createProspectiveRace,
+    createConfirmedRace,
+    convertToConfirmed,
+    updateCalendarSettings,
+    toggleRaceVisibility,
+    deleteProspectiveRace,
+    deleteConfirmedRace,
+    joinRace,
+    leaveRace,
+    getUpcomingDeadlines
+  } = useCalendarStore()
+
+  const { practices, fetchPractices } = usePracticeStore()
+
+  const [currentMonth, setCurrentMonth] = useState(new Date())
+  const [activeTab, setActiveTab] = useState('calendar')
+  const [showProspectiveForm, setShowProspectiveForm] = useState(false)
+  const [showConfirmedForm, setShowConfirmedForm] = useState(false)
+  const [showConvertModal, setShowConvertModal] = useState(false)
+  const [selectedRace, setSelectedRace] = useState(null)
+  const [selectedDate, setSelectedDate] = useState(null)
+
+  const [prospectiveForm, setProspectiveForm] = useState({
+    name: '',
+    location: '',
+    description: '',
+    race_date: '',
+    early_bird_deadline: '',
+    registration_deadline: '',
+    payment_deadline: '',
+    estimated_cost: '',
+    early_bird_cost: '',
+    external_link: '',
+    notes: '',
+    is_visible_to_members: false
+  })
+
+  const [confirmedForm, setConfirmedForm] = useState({
+    name: '',
+    location: '',
+    venue_address: '',
+    description: '',
+    race_date: '',
+    race_start_time: '',
+    race_end_time: '',
+    captains_meeting_date: '',
+    team_briefing_date: '',
+    lineup_submission_deadline: '',
+    payment_due_date: '',
+    total_cost: '',
+    per_person_cost: '',
+    external_link: '',
+    notes: '',
+    is_visible_to_members: true
+  })
+
+  const [convertFormData, setConvertFormData] = useState({
+    race_start_time: '',
+    captains_meeting_date: '',
+    team_briefing_date: '',
+    lineup_submission_deadline: '',
+    payment_due_date: '',
+    venue_address: ''
+  })
+
+  const isCoachOrAdmin = hasRole('admin') || hasRole('coach')
+
+  useEffect(() => {
+    fetchProspectiveRaces()
+    fetchConfirmedRaces()
+    fetchPractices()
+    if (user) {
+      fetchCalendarSettings(user.id)
+    }
+  }, [user?.id])
+
+  // Generate calendar days
+  const calendarDays = useMemo(() => {
+    const monthStart = startOfMonth(currentMonth)
+    const monthEnd = endOfMonth(currentMonth)
+    const startDate = startOfWeek(monthStart)
+    const endDate = endOfWeek(monthEnd)
+
+    return eachDayOfInterval({ start: startDate, end: endDate })
+  }, [currentMonth])
+
+  // Get events for a specific day
+  const getEventsForDay = (day) => {
+    const events = []
+    const dayStr = format(day, 'yyyy-MM-dd')
+
+    // Add practices
+    if (calendarSettings?.show_practices) {
+      practices.forEach(practice => {
+        if (practice.date === dayStr) {
+          events.push({
+            id: `practice-${practice.id}`,
+            title: 'Practice',
+            type: 'practice',
+            color: 'bg-blue-500',
+            data: practice
+          })
+        }
+      })
+    }
+
+    // Add prospective races
+    if (calendarSettings?.show_prospective_races) {
+      prospectiveRaces.forEach(race => {
+        if (race.race_date === dayStr && race.status === 'prospective') {
+          events.push({
+            id: `prospective-${race.id}`,
+            title: race.name,
+            type: 'prospective_race',
+            color: 'bg-orange-500',
+            data: race
+          })
+        }
+      })
+    }
+
+    // Add confirmed races
+    if (calendarSettings?.show_confirmed_races) {
+      confirmedRaces.forEach(race => {
+        if (race.race_date === dayStr) {
+          events.push({
+            id: `confirmed-${race.id}`,
+            title: race.name,
+            type: 'confirmed_race',
+            color: 'bg-green-500',
+            data: race
+          })
+        }
+      })
+    }
+
+    // Add deadlines
+    if (calendarSettings?.show_deadlines) {
+      // Prospective race deadlines
+      prospectiveRaces.forEach(race => {
+        if (race.status === 'prospective') {
+          if (race.early_bird_deadline === dayStr) {
+            events.push({
+              id: `deadline-eb-${race.id}`,
+              title: `Early Bird: ${race.name}`,
+              type: 'deadline',
+              color: 'bg-red-500',
+              data: { type: 'Early Bird', race }
+            })
+          }
+          if (race.registration_deadline === dayStr) {
+            events.push({
+              id: `deadline-reg-${race.id}`,
+              title: `Registration: ${race.name}`,
+              type: 'deadline',
+              color: 'bg-red-500',
+              data: { type: 'Registration', race }
+            })
+          }
+          if (race.payment_deadline === dayStr) {
+            events.push({
+              id: `deadline-pay-${race.id}`,
+              title: `Payment: ${race.name}`,
+              type: 'deadline',
+              color: 'bg-red-500',
+              data: { type: 'Payment', race }
+            })
+          }
+        }
+      })
+
+      // Confirmed race deadlines
+      confirmedRaces.forEach(race => {
+        if (race.lineup_submission_deadline && format(new Date(race.lineup_submission_deadline), 'yyyy-MM-dd') === dayStr) {
+          events.push({
+            id: `deadline-lineup-${race.id}`,
+            title: `Lineup Due: ${race.name}`,
+            type: 'deadline',
+            color: 'bg-red-500',
+            data: { type: 'Lineup', race }
+          })
+        }
+        if (race.payment_due_date === dayStr) {
+          events.push({
+            id: `deadline-cpay-${race.id}`,
+            title: `Payment Due: ${race.name}`,
+            type: 'deadline',
+            color: 'bg-red-500',
+            data: { type: 'Payment', race }
+          })
+        }
+      })
+    }
+
+    return events
+  }
+
+  const handleCreateProspective = async (e) => {
+    e.preventDefault()
+    if (!prospectiveForm.name || !prospectiveForm.race_date) {
+      toast.error('Name and race date are required')
+      return
+    }
+
+    const result = await createProspectiveRace({
+      ...prospectiveForm,
+      created_by: user.id,
+      estimated_cost: prospectiveForm.estimated_cost ? parseFloat(prospectiveForm.estimated_cost) : null,
+      early_bird_cost: prospectiveForm.early_bird_cost ? parseFloat(prospectiveForm.early_bird_cost) : null,
+      early_bird_deadline: prospectiveForm.early_bird_deadline || null,
+      registration_deadline: prospectiveForm.registration_deadline || null,
+      payment_deadline: prospectiveForm.payment_deadline || null
+    })
+
+    if (result.success) {
+      setShowProspectiveForm(false)
+      setProspectiveForm({
+        name: '',
+        location: '',
+        description: '',
+        race_date: '',
+        early_bird_deadline: '',
+        registration_deadline: '',
+        payment_deadline: '',
+        estimated_cost: '',
+        early_bird_cost: '',
+        external_link: '',
+        notes: '',
+        is_visible_to_members: false
+      })
+    }
+  }
+
+  const handleCreateConfirmed = async (e) => {
+    e.preventDefault()
+    if (!confirmedForm.name || !confirmedForm.race_date) {
+      toast.error('Name and race date are required')
+      return
+    }
+
+    const result = await createConfirmedRace({
+      ...confirmedForm,
+      created_by: user.id,
+      total_cost: confirmedForm.total_cost ? parseFloat(confirmedForm.total_cost) : null,
+      per_person_cost: confirmedForm.per_person_cost ? parseFloat(confirmedForm.per_person_cost) : null,
+      captains_meeting_date: confirmedForm.captains_meeting_date || null,
+      team_briefing_date: confirmedForm.team_briefing_date || null,
+      lineup_submission_deadline: confirmedForm.lineup_submission_deadline || null,
+      payment_due_date: confirmedForm.payment_due_date || null,
+      race_start_time: confirmedForm.race_start_time || null,
+      race_end_time: confirmedForm.race_end_time || null
+    })
+
+    if (result.success) {
+      setShowConfirmedForm(false)
+      setConfirmedForm({
+        name: '',
+        location: '',
+        venue_address: '',
+        description: '',
+        race_date: '',
+        race_start_time: '',
+        race_end_time: '',
+        captains_meeting_date: '',
+        team_briefing_date: '',
+        lineup_submission_deadline: '',
+        payment_due_date: '',
+        total_cost: '',
+        per_person_cost: '',
+        external_link: '',
+        notes: '',
+        is_visible_to_members: true
+      })
+    }
+  }
+
+  const handleConvertRace = async (e) => {
+    e.preventDefault()
+    if (!selectedRace) return
+
+    const result = await convertToConfirmed(selectedRace.id, {
+      ...convertFormData,
+      captains_meeting_date: convertFormData.captains_meeting_date || null,
+      team_briefing_date: convertFormData.team_briefing_date || null,
+      lineup_submission_deadline: convertFormData.lineup_submission_deadline || null,
+      payment_due_date: convertFormData.payment_due_date || null,
+      race_start_time: convertFormData.race_start_time || null
+    })
+
+    if (result.success) {
+      setShowConvertModal(false)
+      setSelectedRace(null)
+      setConvertFormData({
+        race_start_time: '',
+        captains_meeting_date: '',
+        team_briefing_date: '',
+        lineup_submission_deadline: '',
+        payment_due_date: '',
+        venue_address: ''
+      })
+    }
+  }
+
+  const handleToggleSetting = async (setting) => {
+    if (!calendarSettings) return
+    await updateCalendarSettings(user.id, {
+      ...calendarSettings,
+      [setting]: !calendarSettings[setting]
+    })
+  }
+
+  const upcomingDeadlines = getUpcomingDeadlines().slice(0, 10)
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex justify-between items-center">
+        <h1 className="text-2xl font-bold text-gray-900">Team Calendar</h1>
+
+        {isCoachOrAdmin && (
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowProspectiveForm(true)}
+              className="btn-secondary"
+            >
+              + Prospective Race
+            </button>
+            <button
+              onClick={() => setShowConfirmedForm(true)}
+              className="btn-primary"
+            >
+              + Confirmed Race
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Tabs */}
+      <div className="border-b border-gray-200">
+        <nav className="-mb-px flex space-x-8">
+          {['calendar', 'prospective', 'confirmed', 'deadlines'].map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`py-2 px-1 border-b-2 font-medium text-sm capitalize ${
+                activeTab === tab
+                  ? 'border-primary-500 text-primary-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              {tab === 'prospective' ? 'Prospective Races' : tab === 'confirmed' ? 'Confirmed Races' : tab}
+            </button>
+          ))}
+        </nav>
+      </div>
+
+      {/* Calendar Visibility Toggles */}
+      {activeTab === 'calendar' && calendarSettings && (
+        <div className="card">
+          <h3 className="font-medium text-gray-900 mb-3">Show on Calendar</h3>
+          <div className="flex flex-wrap gap-4">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={calendarSettings.show_practices}
+                onChange={() => handleToggleSetting('show_practices')}
+                className="rounded border-gray-300"
+              />
+              <span className="text-sm text-gray-700">Practices</span>
+              <span className="w-3 h-3 bg-blue-500 rounded"></span>
+            </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={calendarSettings.show_confirmed_races}
+                onChange={() => handleToggleSetting('show_confirmed_races')}
+                className="rounded border-gray-300"
+              />
+              <span className="text-sm text-gray-700">Confirmed Races</span>
+              <span className="w-3 h-3 bg-green-500 rounded"></span>
+            </label>
+            {isCoachOrAdmin && (
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={calendarSettings.show_prospective_races}
+                  onChange={() => handleToggleSetting('show_prospective_races')}
+                  className="rounded border-gray-300"
+                />
+                <span className="text-sm text-gray-700">Prospective Races</span>
+                <span className="w-3 h-3 bg-orange-500 rounded"></span>
+              </label>
+            )}
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={calendarSettings.show_deadlines}
+                onChange={() => handleToggleSetting('show_deadlines')}
+                className="rounded border-gray-300"
+              />
+              <span className="text-sm text-gray-700">Deadlines</span>
+              <span className="w-3 h-3 bg-red-500 rounded"></span>
+            </label>
+          </div>
+        </div>
+      )}
+
+      {/* Calendar View */}
+      {activeTab === 'calendar' && (
+        <div className="card">
+          {/* Month Navigation */}
+          <div className="flex justify-between items-center mb-4">
+            <button
+              onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
+              className="p-2 hover:bg-gray-100 rounded"
+            >
+              &larr;
+            </button>
+            <h2 className="text-xl font-semibold text-gray-900">
+              {format(currentMonth, 'MMMM yyyy')}
+            </h2>
+            <button
+              onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
+              className="p-2 hover:bg-gray-100 rounded"
+            >
+              &rarr;
+            </button>
+          </div>
+
+          {/* Calendar Grid */}
+          <div className="grid grid-cols-7 gap-1">
+            {/* Day Headers */}
+            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+              <div key={day} className="text-center font-medium text-gray-500 py-2">
+                {day}
+              </div>
+            ))}
+
+            {/* Calendar Days */}
+            {calendarDays.map((day, idx) => {
+              const dayEvents = getEventsForDay(day)
+              const isCurrentMonth = isSameMonth(day, currentMonth)
+              const isCurrentDay = isToday(day)
+
+              return (
+                <div
+                  key={idx}
+                  onClick={() => setSelectedDate(day)}
+                  className={`min-h-24 p-1 border rounded cursor-pointer hover:bg-gray-50 ${
+                    !isCurrentMonth ? 'bg-gray-50 text-gray-400' : 'bg-white'
+                  } ${isCurrentDay ? 'ring-2 ring-primary-500' : ''}`}
+                >
+                  <div className={`text-sm font-medium ${isCurrentDay ? 'text-primary-600' : ''}`}>
+                    {format(day, 'd')}
+                  </div>
+                  <div className="space-y-1 mt-1">
+                    {dayEvents.slice(0, 3).map(event => (
+                      <div
+                        key={event.id}
+                        className={`text-xs text-white px-1 py-0.5 rounded truncate ${event.color}`}
+                        title={event.title}
+                      >
+                        {event.title}
+                      </div>
+                    ))}
+                    {dayEvents.length > 3 && (
+                      <div className="text-xs text-gray-500">
+                        +{dayEvents.length - 3} more
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Selected Date Events */}
+      {selectedDate && (
+        <div className="card">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="font-semibold text-gray-900">
+              Events on {format(selectedDate, 'MMMM d, yyyy')}
+            </h3>
+            <button
+              onClick={() => setSelectedDate(null)}
+              className="text-gray-500 hover:text-gray-700"
+            >
+              Close
+            </button>
+          </div>
+          <div className="space-y-3">
+            {getEventsForDay(selectedDate).length === 0 ? (
+              <p className="text-gray-500 text-sm">No events on this day</p>
+            ) : (
+              getEventsForDay(selectedDate).map(event => (
+                <div key={event.id} className="p-3 bg-gray-50 rounded border">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-3 h-3 rounded ${event.color}`}></span>
+                    <span className="font-medium text-gray-900">{event.title}</span>
+                  </div>
+                  <div className="text-sm text-gray-600 mt-1">
+                    Type: {event.type.replace('_', ' ')}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Prospective Races List */}
+      {activeTab === 'prospective' && (
+        <div className="space-y-4">
+          {!isCoachOrAdmin && (
+            <div className="bg-yellow-50 border border-yellow-200 p-4 rounded">
+              <p className="text-sm text-yellow-800">
+                Only coaches and admins can view and manage prospective races.
+              </p>
+            </div>
+          )}
+
+          {isCoachOrAdmin && prospectiveRaces.filter(r => r.status === 'prospective').length === 0 ? (
+            <div className="card text-center py-8">
+              <p className="text-gray-500">No prospective races yet</p>
+              <button
+                onClick={() => setShowProspectiveForm(true)}
+                className="btn-primary mt-4"
+              >
+                Add First Prospective Race
+              </button>
+            </div>
+          ) : (
+            isCoachOrAdmin && prospectiveRaces.filter(r => r.status === 'prospective').map(race => (
+              <div key={race.id} className="card">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">{race.name}</h3>
+                    <p className="text-sm text-gray-600">{race.location}</p>
+                    <p className="text-sm text-gray-500 mt-1">
+                      Race Date: {format(new Date(race.race_date), 'MMMM d, yyyy')}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        setSelectedRace(race)
+                        setShowConvertModal(true)
+                      }}
+                      className="btn-primary text-sm"
+                    >
+                      Convert to Confirmed
+                    </button>
+                    <button
+                      onClick={() => deleteProspectiveRace(race.id)}
+                      className="btn-secondary text-sm text-red-600"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+
+                {/* Deadlines */}
+                <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {race.early_bird_deadline && (
+                    <div className="p-2 bg-orange-50 rounded">
+                      <div className="text-xs font-medium text-orange-800">Early Bird Deadline</div>
+                      <div className="text-sm text-orange-900">
+                        {format(new Date(race.early_bird_deadline), 'MMM d, yyyy')}
+                      </div>
+                      {race.early_bird_cost && (
+                        <div className="text-xs text-orange-700">
+                          Cost: ${race.early_bird_cost}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {race.registration_deadline && (
+                    <div className="p-2 bg-blue-50 rounded">
+                      <div className="text-xs font-medium text-blue-800">Registration Deadline</div>
+                      <div className="text-sm text-blue-900">
+                        {format(new Date(race.registration_deadline), 'MMM d, yyyy')}
+                      </div>
+                    </div>
+                  )}
+                  {race.payment_deadline && (
+                    <div className="p-2 bg-red-50 rounded">
+                      <div className="text-xs font-medium text-red-800">Payment Deadline</div>
+                      <div className="text-sm text-red-900">
+                        {format(new Date(race.payment_deadline), 'MMM d, yyyy')}
+                      </div>
+                      {race.estimated_cost && (
+                        <div className="text-xs text-red-700">
+                          Est. Cost: ${race.estimated_cost}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Visibility Toggle */}
+                <div className="mt-4 flex items-center gap-2">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={race.is_visible_to_members}
+                      onChange={() => toggleRaceVisibility(race.id, true, !race.is_visible_to_members)}
+                      className="rounded border-gray-300"
+                    />
+                    <span className="text-sm text-gray-700">Visible to team members</span>
+                  </label>
+                </div>
+
+                {race.external_link && (
+                  <a
+                    href={race.external_link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-block mt-2 text-sm text-primary-600 hover:underline"
+                  >
+                    Race Website &rarr;
+                  </a>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* Confirmed Races List */}
+      {activeTab === 'confirmed' && (
+        <div className="space-y-4">
+          {confirmedRaces.length === 0 ? (
+            <div className="card text-center py-8">
+              <p className="text-gray-500">No confirmed races yet</p>
+              {isCoachOrAdmin && (
+                <button
+                  onClick={() => setShowConfirmedForm(true)}
+                  className="btn-primary mt-4"
+                >
+                  Add First Confirmed Race
+                </button>
+              )}
+            </div>
+          ) : (
+            confirmedRaces.map(race => {
+              const userParticipant = race.participants?.find(p => p.user_id === user?.id)
+
+              return (
+                <div key={race.id} className="card">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900">{race.name}</h3>
+                      <p className="text-sm text-gray-600">{race.location}</p>
+                      {race.venue_address && (
+                        <p className="text-xs text-gray-500">{race.venue_address}</p>
+                      )}
+                      <p className="text-sm text-gray-500 mt-1">
+                        Race Date: {format(new Date(race.race_date), 'MMMM d, yyyy')}
+                        {race.race_start_time && ` at ${race.race_start_time}`}
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      {!userParticipant ? (
+                        <button
+                          onClick={() => joinRace(race.id, user.id)}
+                          className="btn-primary text-sm"
+                        >
+                          I'm Interested
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => leaveRace(race.id, user.id)}
+                          className="btn-secondary text-sm"
+                        >
+                          Leave Race
+                        </button>
+                      )}
+                      {isCoachOrAdmin && (
+                        <button
+                          onClick={() => deleteConfirmedRace(race.id)}
+                          className="btn-secondary text-sm text-red-600"
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Important Dates */}
+                  <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-3">
+                    {race.captains_meeting_date && (
+                      <div className="p-2 bg-purple-50 rounded">
+                        <div className="text-xs font-medium text-purple-800">Captain's Meeting</div>
+                        <div className="text-sm text-purple-900">
+                          {format(new Date(race.captains_meeting_date), 'MMM d, yyyy h:mm a')}
+                        </div>
+                      </div>
+                    )}
+                    {race.team_briefing_date && (
+                      <div className="p-2 bg-indigo-50 rounded">
+                        <div className="text-xs font-medium text-indigo-800">Team Briefing</div>
+                        <div className="text-sm text-indigo-900">
+                          {format(new Date(race.team_briefing_date), 'MMM d, yyyy h:mm a')}
+                        </div>
+                      </div>
+                    )}
+                    {race.lineup_submission_deadline && (
+                      <div className="p-2 bg-yellow-50 rounded">
+                        <div className="text-xs font-medium text-yellow-800">Lineup Submission</div>
+                        <div className="text-sm text-yellow-900">
+                          {format(new Date(race.lineup_submission_deadline), 'MMM d, yyyy h:mm a')}
+                        </div>
+                      </div>
+                    )}
+                    {race.payment_due_date && (
+                      <div className="p-2 bg-red-50 rounded">
+                        <div className="text-xs font-medium text-red-800">Payment Due</div>
+                        <div className="text-sm text-red-900">
+                          {format(new Date(race.payment_due_date), 'MMM d, yyyy')}
+                        </div>
+                        {race.per_person_cost && (
+                          <div className="text-xs text-red-700">
+                            ${race.per_person_cost}/person
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Participants */}
+                  <div className="mt-4">
+                    <h4 className="text-sm font-medium text-gray-900 mb-2">
+                      Participants ({race.participants?.length || 0})
+                    </h4>
+                    <div className="flex flex-wrap gap-2">
+                      {race.participants?.slice(0, 10).map(p => (
+                        <span
+                          key={p.id}
+                          className={`text-xs px-2 py-1 rounded ${
+                            p.status === 'confirmed'
+                              ? 'bg-green-100 text-green-800'
+                              : p.status === 'paid'
+                              ? 'bg-blue-100 text-blue-800'
+                              : 'bg-gray-100 text-gray-800'
+                          }`}
+                        >
+                          {p.user_profile?.full_name || 'Unknown'}
+                        </span>
+                      ))}
+                      {(race.participants?.length || 0) > 10 && (
+                        <span className="text-xs text-gray-500">
+                          +{race.participants.length - 10} more
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Visibility Toggle (Admin only) */}
+                  {isCoachOrAdmin && (
+                    <div className="mt-4 flex items-center gap-2">
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={race.is_visible_to_members}
+                          onChange={() => toggleRaceVisibility(race.id, false, !race.is_visible_to_members)}
+                          className="rounded border-gray-300"
+                        />
+                        <span className="text-sm text-gray-700">Visible to team members</span>
+                      </label>
+                    </div>
+                  )}
+
+                  {race.external_link && (
+                    <a
+                      href={race.external_link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-block mt-2 text-sm text-primary-600 hover:underline"
+                    >
+                      Race Website &rarr;
+                    </a>
+                  )}
+                </div>
+              )
+            })
+          )}
+        </div>
+      )}
+
+      {/* Upcoming Deadlines */}
+      {activeTab === 'deadlines' && (
+        <div className="card">
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Upcoming Deadlines</h2>
+          {upcomingDeadlines.length === 0 ? (
+            <p className="text-gray-500">No upcoming deadlines</p>
+          ) : (
+            <div className="space-y-3">
+              {upcomingDeadlines.map((deadline, idx) => (
+                <div key={idx} className="flex justify-between items-center p-3 bg-red-50 rounded border border-red-100">
+                  <div>
+                    <div className="font-medium text-red-900">{deadline.type}</div>
+                    <div className="text-sm text-red-800">{deadline.raceName}</div>
+                  </div>
+                  <div className="text-sm text-red-700">
+                    {format(deadline.date, 'MMM d, yyyy')}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Create Prospective Race Modal */}
+      {showProspectiveForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-semibold text-gray-900">Add Prospective Race</h2>
+                <button
+                  onClick={() => setShowProspectiveForm(false)}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  &times;
+                </button>
+              </div>
+
+              <form onSubmit={handleCreateProspective} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Race Name *</label>
+                    <input
+                      type="text"
+                      value={prospectiveForm.name}
+                      onChange={(e) => setProspectiveForm({ ...prospectiveForm, name: e.target.value })}
+                      className="input mt-1"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Race Date *</label>
+                    <input
+                      type="date"
+                      value={prospectiveForm.race_date}
+                      onChange={(e) => setProspectiveForm({ ...prospectiveForm, race_date: e.target.value })}
+                      className="input mt-1"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Location</label>
+                  <input
+                    type="text"
+                    value={prospectiveForm.location}
+                    onChange={(e) => setProspectiveForm({ ...prospectiveForm, location: e.target.value })}
+                    className="input mt-1"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Description</label>
+                  <textarea
+                    value={prospectiveForm.description}
+                    onChange={(e) => setProspectiveForm({ ...prospectiveForm, description: e.target.value })}
+                    className="input mt-1"
+                    rows={3}
+                  />
+                </div>
+
+                <div className="border-t pt-4">
+                  <h3 className="font-medium text-gray-900 mb-3">Deadlines</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Early Bird Deadline</label>
+                      <input
+                        type="date"
+                        value={prospectiveForm.early_bird_deadline}
+                        onChange={(e) => setProspectiveForm({ ...prospectiveForm, early_bird_deadline: e.target.value })}
+                        className="input mt-1"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Registration Deadline</label>
+                      <input
+                        type="date"
+                        value={prospectiveForm.registration_deadline}
+                        onChange={(e) => setProspectiveForm({ ...prospectiveForm, registration_deadline: e.target.value })}
+                        className="input mt-1"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Payment Deadline</label>
+                      <input
+                        type="date"
+                        value={prospectiveForm.payment_deadline}
+                        onChange={(e) => setProspectiveForm({ ...prospectiveForm, payment_deadline: e.target.value })}
+                        className="input mt-1"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border-t pt-4">
+                  <h3 className="font-medium text-gray-900 mb-3">Costs</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Estimated Cost ($)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={prospectiveForm.estimated_cost}
+                        onChange={(e) => setProspectiveForm({ ...prospectiveForm, estimated_cost: e.target.value })}
+                        className="input mt-1"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Early Bird Cost ($)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={prospectiveForm.early_bird_cost}
+                        onChange={(e) => setProspectiveForm({ ...prospectiveForm, early_bird_cost: e.target.value })}
+                        className="input mt-1"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Race Website URL</label>
+                  <input
+                    type="url"
+                    value={prospectiveForm.external_link}
+                    onChange={(e) => setProspectiveForm({ ...prospectiveForm, external_link: e.target.value })}
+                    className="input mt-1"
+                    placeholder="https://..."
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Notes</label>
+                  <textarea
+                    value={prospectiveForm.notes}
+                    onChange={(e) => setProspectiveForm({ ...prospectiveForm, notes: e.target.value })}
+                    className="input mt-1"
+                    rows={2}
+                  />
+                </div>
+
+                <div>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={prospectiveForm.is_visible_to_members}
+                      onChange={(e) => setProspectiveForm({ ...prospectiveForm, is_visible_to_members: e.target.checked })}
+                      className="rounded border-gray-300"
+                    />
+                    <span className="text-sm text-gray-700">Make visible to team members</span>
+                  </label>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setShowProspectiveForm(false)}
+                    className="btn-secondary"
+                  >
+                    Cancel
+                  </button>
+                  <button type="submit" className="btn-primary">
+                    Add Prospective Race
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create Confirmed Race Modal */}
+      {showConfirmedForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-semibold text-gray-900">Add Confirmed Race</h2>
+                <button
+                  onClick={() => setShowConfirmedForm(false)}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  &times;
+                </button>
+              </div>
+
+              <form onSubmit={handleCreateConfirmed} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Race Name *</label>
+                    <input
+                      type="text"
+                      value={confirmedForm.name}
+                      onChange={(e) => setConfirmedForm({ ...confirmedForm, name: e.target.value })}
+                      className="input mt-1"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Race Date *</label>
+                    <input
+                      type="date"
+                      value={confirmedForm.race_date}
+                      onChange={(e) => setConfirmedForm({ ...confirmedForm, race_date: e.target.value })}
+                      className="input mt-1"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Start Time</label>
+                    <input
+                      type="time"
+                      value={confirmedForm.race_start_time}
+                      onChange={(e) => setConfirmedForm({ ...confirmedForm, race_start_time: e.target.value })}
+                      className="input mt-1"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">End Time</label>
+                    <input
+                      type="time"
+                      value={confirmedForm.race_end_time}
+                      onChange={(e) => setConfirmedForm({ ...confirmedForm, race_end_time: e.target.value })}
+                      className="input mt-1"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Location</label>
+                  <input
+                    type="text"
+                    value={confirmedForm.location}
+                    onChange={(e) => setConfirmedForm({ ...confirmedForm, location: e.target.value })}
+                    className="input mt-1"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Venue Address</label>
+                  <textarea
+                    value={confirmedForm.venue_address}
+                    onChange={(e) => setConfirmedForm({ ...confirmedForm, venue_address: e.target.value })}
+                    className="input mt-1"
+                    rows={2}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Description</label>
+                  <textarea
+                    value={confirmedForm.description}
+                    onChange={(e) => setConfirmedForm({ ...confirmedForm, description: e.target.value })}
+                    className="input mt-1"
+                    rows={3}
+                  />
+                </div>
+
+                <div className="border-t pt-4">
+                  <h3 className="font-medium text-gray-900 mb-3">Important Dates</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Captain's Meeting</label>
+                      <input
+                        type="datetime-local"
+                        value={confirmedForm.captains_meeting_date}
+                        onChange={(e) => setConfirmedForm({ ...confirmedForm, captains_meeting_date: e.target.value })}
+                        className="input mt-1"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Team Briefing</label>
+                      <input
+                        type="datetime-local"
+                        value={confirmedForm.team_briefing_date}
+                        onChange={(e) => setConfirmedForm({ ...confirmedForm, team_briefing_date: e.target.value })}
+                        className="input mt-1"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Lineup Submission Deadline</label>
+                      <input
+                        type="datetime-local"
+                        value={confirmedForm.lineup_submission_deadline}
+                        onChange={(e) => setConfirmedForm({ ...confirmedForm, lineup_submission_deadline: e.target.value })}
+                        className="input mt-1"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Payment Due Date</label>
+                      <input
+                        type="date"
+                        value={confirmedForm.payment_due_date}
+                        onChange={(e) => setConfirmedForm({ ...confirmedForm, payment_due_date: e.target.value })}
+                        className="input mt-1"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border-t pt-4">
+                  <h3 className="font-medium text-gray-900 mb-3">Costs</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Total Cost ($)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={confirmedForm.total_cost}
+                        onChange={(e) => setConfirmedForm({ ...confirmedForm, total_cost: e.target.value })}
+                        className="input mt-1"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Per Person Cost ($)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={confirmedForm.per_person_cost}
+                        onChange={(e) => setConfirmedForm({ ...confirmedForm, per_person_cost: e.target.value })}
+                        className="input mt-1"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Race Website URL</label>
+                  <input
+                    type="url"
+                    value={confirmedForm.external_link}
+                    onChange={(e) => setConfirmedForm({ ...confirmedForm, external_link: e.target.value })}
+                    className="input mt-1"
+                    placeholder="https://..."
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Notes</label>
+                  <textarea
+                    value={confirmedForm.notes}
+                    onChange={(e) => setConfirmedForm({ ...confirmedForm, notes: e.target.value })}
+                    className="input mt-1"
+                    rows={2}
+                  />
+                </div>
+
+                <div>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={confirmedForm.is_visible_to_members}
+                      onChange={(e) => setConfirmedForm({ ...confirmedForm, is_visible_to_members: e.target.checked })}
+                      className="rounded border-gray-300"
+                    />
+                    <span className="text-sm text-gray-700">Make visible to team members</span>
+                  </label>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmedForm(false)}
+                    className="btn-secondary"
+                  >
+                    Cancel
+                  </button>
+                  <button type="submit" className="btn-primary">
+                    Create Confirmed Race
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Convert to Confirmed Modal */}
+      {showConvertModal && selectedRace && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-lg w-full">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-semibold text-gray-900">Convert to Confirmed Race</h2>
+                <button
+                  onClick={() => {
+                    setShowConvertModal(false)
+                    setSelectedRace(null)
+                  }}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  &times;
+                </button>
+              </div>
+
+              <p className="text-sm text-gray-600 mb-4">
+                Converting <strong>{selectedRace.name}</strong> to a confirmed race.
+                Add additional details below (optional).
+              </p>
+
+              <form onSubmit={handleConvertRace} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Race Start Time</label>
+                  <input
+                    type="time"
+                    value={convertFormData.race_start_time}
+                    onChange={(e) => setConvertFormData({ ...convertFormData, race_start_time: e.target.value })}
+                    className="input mt-1"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Venue Address</label>
+                  <textarea
+                    value={convertFormData.venue_address}
+                    onChange={(e) => setConvertFormData({ ...convertFormData, venue_address: e.target.value })}
+                    className="input mt-1"
+                    rows={2}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Captain's Meeting</label>
+                  <input
+                    type="datetime-local"
+                    value={convertFormData.captains_meeting_date}
+                    onChange={(e) => setConvertFormData({ ...convertFormData, captains_meeting_date: e.target.value })}
+                    className="input mt-1"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Team Briefing</label>
+                  <input
+                    type="datetime-local"
+                    value={convertFormData.team_briefing_date}
+                    onChange={(e) => setConvertFormData({ ...convertFormData, team_briefing_date: e.target.value })}
+                    className="input mt-1"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Lineup Submission Deadline</label>
+                  <input
+                    type="datetime-local"
+                    value={convertFormData.lineup_submission_deadline}
+                    onChange={(e) => setConvertFormData({ ...convertFormData, lineup_submission_deadline: e.target.value })}
+                    className="input mt-1"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Payment Due Date</label>
+                  <input
+                    type="date"
+                    value={convertFormData.payment_due_date}
+                    onChange={(e) => setConvertFormData({ ...convertFormData, payment_due_date: e.target.value })}
+                    className="input mt-1"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowConvertModal(false)
+                      setSelectedRace(null)
+                    }}
+                    className="btn-secondary"
+                  >
+                    Cancel
+                  </button>
+                  <button type="submit" className="btn-primary">
+                    Confirm Race
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

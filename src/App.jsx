@@ -12,6 +12,8 @@ import Profile from './pages/Profile'
 import Announcements from './pages/Announcements'
 import Events from './pages/Events'
 import EventDetail from './pages/EventDetail'
+import Workouts from './pages/Workouts'
+import Calendar from './pages/Calendar'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuthStore()
@@ -53,6 +55,8 @@ function App() {
             <Route path="lineups" element={<Lineups />} />
             <Route path="events" element={<Events />} />
             <Route path="events/:eventId" element={<EventDetail />} />
+            <Route path="workouts" element={<Workouts />} />
+            <Route path="calendar" element={<Calendar />} />
             <Route path="announcements" element={<Announcements />} />
             <Route path="profile" element={<Profile />} />
           </Route>
