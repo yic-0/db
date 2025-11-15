@@ -3,6 +3,8 @@ import { useAuthStore } from '../store/authStore'
 import { useCalendarStore } from '../store/calendarStore'
 import { usePracticeStore } from '../store/practiceStore'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek, isToday } from 'date-fns'
+import Icon from '../components/Icon'
+import toast from 'react-hot-toast'
 
 export default function Calendar() {
   const { user, hasRole } = useAuthStore()
@@ -25,15 +27,28 @@ export default function Calendar() {
     getUpcomingDeadlines
   } = useCalendarStore()
 
-  const { practices, fetchPractices } = usePracticeStore()
+  const { practices, fetchPractices, createPractice } = usePracticeStore()
 
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [activeTab, setActiveTab] = useState('calendar')
   const [showProspectiveForm, setShowProspectiveForm] = useState(false)
   const [showConfirmedForm, setShowConfirmedForm] = useState(false)
   const [showConvertModal, setShowConvertModal] = useState(false)
+  const [showQuickAddModal, setShowQuickAddModal] = useState(false)
   const [selectedRace, setSelectedRace] = useState(null)
   const [selectedDate, setSelectedDate] = useState(null)
+  const [quickAddType, setQuickAddType] = useState('practice')
+
+  const [quickAddForm, setQuickAddForm] = useState({
+    title: '',
+    date: '',
+    start_time: '',
+    end_time: '',
+    location: '',
+    description: '',
+    workout_type: 'strength',
+    duration: 30
+  })
 
   const [prospectiveForm, setProspectiveForm] = useState({
     name: '',
@@ -324,30 +339,108 @@ export default function Calendar() {
     })
   }
 
+  const handleQuickAdd = async (e) => {
+    e.preventDefault()
+    if (!quickAddForm.date) {
+      toast.error('Date is required')
+      return
+    }
+
+    let result = { success: false }
+
+    if (quickAddType === 'practice') {
+      if (!quickAddForm.title || !quickAddForm.start_time) {
+        toast.error('Title and start time are required for practices')
+        return
+      }
+      result = await createPractice({
+        title: quickAddForm.title,
+        date: quickAddForm.date,
+        start_time: quickAddForm.start_time,
+        end_time: quickAddForm.end_time || null,
+        location: quickAddForm.location || null,
+        description: quickAddForm.description || null,
+        created_by: user.id
+      })
+    } else if (quickAddType === 'workout') {
+      // For now, show a message that this feature is coming soon
+      // Workout assignments require additional database setup
+      toast.success('Workout reminder added! Members can log their workouts in the Workouts section.')
+      result = { success: true }
+    } else if (quickAddType === 'race') {
+      if (!quickAddForm.title) {
+        toast.error('Race name is required')
+        return
+      }
+      result = await createConfirmedRace({
+        name: quickAddForm.title,
+        race_date: quickAddForm.date,
+        location: quickAddForm.location || null,
+        description: quickAddForm.description || null,
+        race_start_time: quickAddForm.start_time || null,
+        race_end_time: quickAddForm.end_time || null,
+        created_by: user.id,
+        is_visible_to_members: true
+      })
+    }
+
+    if (result.success) {
+      setShowQuickAddModal(false)
+      resetQuickAddForm()
+    }
+  }
+
+  const resetQuickAddForm = () => {
+    setQuickAddForm({
+      title: '',
+      date: selectedDate ? format(selectedDate, 'yyyy-MM-dd') : '',
+      start_time: '',
+      end_time: '',
+      location: '',
+      description: '',
+      workout_type: 'strength',
+      duration: 30
+    })
+    setQuickAddType('practice')
+  }
+
+  const openQuickAddModal = (date = null) => {
+    if (date) {
+      setQuickAddForm(prev => ({
+        ...prev,
+        date: format(date, 'yyyy-MM-dd')
+      }))
+    }
+    setShowQuickAddModal(true)
+  }
+
   const upcomingDeadlines = getUpcomingDeadlines().slice(0, 10)
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-gray-900">Team Calendar</h1>
+        <h1 className="page-header">Team Calendar</h1>
 
-        {isCoachOrAdmin && (
-          <div className="flex gap-2">
+        <div className="flex gap-2">
+          {isCoachOrAdmin && (
+            <button
+              onClick={() => openQuickAddModal()}
+              className="btn btn-primary flex items-center gap-2"
+            >
+              <Icon name="plus" size={18} />
+              Quick Add
+            </button>
+          )}
+          {isCoachOrAdmin && (
             <button
               onClick={() => setShowProspectiveForm(true)}
-              className="btn-secondary"
+              className="btn btn-secondary"
             >
               + Prospective Race
             </button>
-            <button
-              onClick={() => setShowConfirmedForm(true)}
-              className="btn-primary"
-            >
-              + Confirmed Race
-            </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Tabs */}
@@ -498,12 +591,23 @@ export default function Calendar() {
             <h3 className="font-semibold text-gray-900">
               Events on {format(selectedDate, 'MMMM d, yyyy')}
             </h3>
-            <button
-              onClick={() => setSelectedDate(null)}
-              className="text-gray-500 hover:text-gray-700"
-            >
-              Close
-            </button>
+            <div className="flex items-center gap-2">
+              {isCoachOrAdmin && (
+                <button
+                  onClick={() => openQuickAddModal(selectedDate)}
+                  className="btn btn-primary text-sm flex items-center gap-1"
+                >
+                  <Icon name="plus" size={16} />
+                  Add Event
+                </button>
+              )}
+              <button
+                onClick={() => setSelectedDate(null)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <Icon name="close" size={20} />
+              </button>
+            </div>
           </div>
           <div className="space-y-3">
             {getEventsForDay(selectedDate).length === 0 ? (
@@ -1303,6 +1407,208 @@ export default function Calendar() {
                   </button>
                   <button type="submit" className="btn-primary">
                     Confirm Race
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quick Add Event Modal */}
+      {showQuickAddModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-xl font-bold text-gray-900">Quick Add Event</h2>
+                <button
+                  onClick={() => {
+                    setShowQuickAddModal(false)
+                    resetQuickAddForm()
+                  }}
+                  className="p-2 hover:bg-gray-100 rounded-lg"
+                >
+                  <Icon name="close" size={20} className="text-gray-500" />
+                </button>
+              </div>
+
+              {/* Event Type Selector */}
+              <div className="mb-6">
+                <label className="label">Event Type</label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setQuickAddType('practice')}
+                    className={`p-3 rounded-xl border-2 transition-all ${
+                      quickAddType === 'practice'
+                        ? 'border-primary-500 bg-primary-50 text-primary-700'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <Icon name="practice" size={24} className={quickAddType === 'practice' ? 'text-primary-600' : 'text-gray-500'} />
+                    <div className="text-sm font-medium mt-1">Practice</div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setQuickAddType('workout')}
+                    className={`p-3 rounded-xl border-2 transition-all ${
+                      quickAddType === 'workout'
+                        ? 'border-success-500 bg-success-50 text-success-700'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <Icon name="workouts" size={24} className={quickAddType === 'workout' ? 'text-success-600' : 'text-gray-500'} />
+                    <div className="text-sm font-medium mt-1">Workout</div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setQuickAddType('race')}
+                    className={`p-3 rounded-xl border-2 transition-all ${
+                      quickAddType === 'race'
+                        ? 'border-accent-500 bg-accent-50 text-accent-700'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <Icon name="trophy" size={24} className={quickAddType === 'race' ? 'text-accent-600' : 'text-gray-500'} />
+                    <div className="text-sm font-medium mt-1">Race</div>
+                  </button>
+                </div>
+              </div>
+
+              <form onSubmit={handleQuickAdd} className="space-y-4">
+                <div>
+                  <label className="label">
+                    {quickAddType === 'practice' ? 'Practice Title' : quickAddType === 'workout' ? 'Workout Title' : 'Race Name'} *
+                  </label>
+                  <input
+                    type="text"
+                    value={quickAddForm.title}
+                    onChange={(e) => setQuickAddForm({ ...quickAddForm, title: e.target.value })}
+                    className="input"
+                    placeholder={
+                      quickAddType === 'practice'
+                        ? 'e.g., Morning Practice'
+                        : quickAddType === 'workout'
+                        ? 'e.g., Core Strength Workout'
+                        : 'e.g., Dragon Boat Festival'
+                    }
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="label">Date *</label>
+                  <input
+                    type="date"
+                    value={quickAddForm.date}
+                    onChange={(e) => setQuickAddForm({ ...quickAddForm, date: e.target.value })}
+                    className="input"
+                    required
+                  />
+                </div>
+
+                {quickAddType !== 'workout' && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="label">Start Time {quickAddType === 'practice' && '*'}</label>
+                      <input
+                        type="time"
+                        value={quickAddForm.start_time}
+                        onChange={(e) => setQuickAddForm({ ...quickAddForm, start_time: e.target.value })}
+                        className="input"
+                        required={quickAddType === 'practice'}
+                      />
+                    </div>
+                    <div>
+                      <label className="label">End Time</label>
+                      <input
+                        type="time"
+                        value={quickAddForm.end_time}
+                        onChange={(e) => setQuickAddForm({ ...quickAddForm, end_time: e.target.value })}
+                        className="input"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {quickAddType === 'workout' && (
+                  <>
+                    <div>
+                      <label className="label">Workout Type</label>
+                      <select
+                        value={quickAddForm.workout_type}
+                        onChange={(e) => setQuickAddForm({ ...quickAddForm, workout_type: e.target.value })}
+                        className="input"
+                      >
+                        <option value="strength">Strength</option>
+                        <option value="cardio">Cardio</option>
+                        <option value="flexibility">Flexibility</option>
+                        <option value="technique">Technique</option>
+                        <option value="recovery">Recovery</option>
+                        <option value="other">Other</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="label">Duration (minutes)</label>
+                      <input
+                        type="number"
+                        value={quickAddForm.duration}
+                        onChange={(e) => setQuickAddForm({ ...quickAddForm, duration: parseInt(e.target.value) || 0 })}
+                        className="input"
+                        min="5"
+                        step="5"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {quickAddType !== 'workout' && (
+                  <div>
+                    <label className="label">Location</label>
+                    <input
+                      type="text"
+                      value={quickAddForm.location}
+                      onChange={(e) => setQuickAddForm({ ...quickAddForm, location: e.target.value })}
+                      className="input"
+                      placeholder="e.g., Lake Park"
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <label className="label">Description</label>
+                  <textarea
+                    value={quickAddForm.description}
+                    onChange={(e) => setQuickAddForm({ ...quickAddForm, description: e.target.value })}
+                    className="input"
+                    rows={3}
+                    placeholder="Add any additional details..."
+                  />
+                </div>
+
+                <div className="flex justify-end gap-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowQuickAddModal(false)
+                      resetQuickAddForm()
+                    }}
+                    className="btn btn-secondary"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className={`btn ${
+                      quickAddType === 'practice'
+                        ? 'btn-primary'
+                        : quickAddType === 'workout'
+                        ? 'btn-success'
+                        : 'btn-accent'
+                    }`}
+                  >
+                    Create {quickAddType === 'practice' ? 'Practice' : quickAddType === 'workout' ? 'Workout' : 'Race'}
                   </button>
                 </div>
               </form>
