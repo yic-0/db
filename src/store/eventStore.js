@@ -141,6 +141,8 @@ export const useEventStore = create((set, get) => ({
           role,
           response_notes: notes,
           updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'event_id,user_id'
         })
         .select()
         .single()
