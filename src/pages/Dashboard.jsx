@@ -20,15 +20,26 @@ export default function Dashboard() {
   useEffect(() => {
     const loadData = async () => {
       setLoading(true)
-      await Promise.all([
-        fetchPractices(),
-        fetchMembers(),
-        user && fetchWorkoutLogs(user.id),
-        fetchConfirmedRaces()
-      ])
+      try {
+        await Promise.all([
+          fetchPractices(),
+          fetchMembers(),
+          user && fetchWorkoutLogs(user.id),
+          fetchConfirmedRaces()
+        ])
+      } catch (error) {
+        console.error('Error loading dashboard data:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+    loadData()
+  }, [user?.id])
 
-      // Fetch RSVPs for recent practices to calculate attendance
-      if (user) {
+  // Fetch RSVPs after practices are loaded
+  useEffect(() => {
+    const loadRSVPs = async () => {
+      if (user && practices.length > 0) {
         const recentPractices = practices
           .filter(p => isBefore(new Date(p.date), new Date()))
           .slice(-10)
@@ -37,10 +48,9 @@ export default function Dashboard() {
           await fetchRSVPs(practice.id)
         }
       }
-      setLoading(false)
     }
-    loadData()
-  }, [user?.id])
+    loadRSVPs()
+  }, [practices, user?.id])
 
   const getGreeting = () => {
     const hour = new Date().getHours()

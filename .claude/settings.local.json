@@ -6,7 +6,10 @@
       "Bash(npm run dev:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(git -C \"C:\\Users\\YZC__\\OneDrive\\Documents\\TeamOrganizationApp\" status)",
+      "Bash(git -C \"C:\\Users\\YZC__\\OneDrive\\Documents\\TeamOrganizationApp\" diff --stat)",
+      "Bash(git -C \"C:\\Users\\YZC__\\OneDrive\\Documents\\TeamOrganizationApp\" log --oneline -5)"
     ],
     "deny": [],
     "ask": []

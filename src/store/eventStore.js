@@ -39,9 +39,22 @@ export const useEventStore = create((set, get) => ({
   // Create new event
   createEvent: async (eventData) => {
     try {
+      // Convert empty strings to null for time fields
+      const cleanedData = { ...eventData }
+      const timeFields = ['start_time', 'end_time', 'arrival_time', 'captains_meeting_time']
+      timeFields.forEach(field => {
+        if (cleanedData[field] === '') {
+          cleanedData[field] = null
+        }
+      })
+      // Also handle registration_deadline
+      if (cleanedData.registration_deadline === '') {
+        cleanedData.registration_deadline = null
+      }
+
       const { data, error } = await supabase
         .from('events')
-        .insert([eventData])
+        .insert([cleanedData])
         .select()
         .single()
 

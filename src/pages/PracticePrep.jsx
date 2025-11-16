@@ -108,7 +108,8 @@ export default function PracticePrep() {
 
   const getMembersWithStatus = () => {
     const practiceRsvps = rsvps[selectedPractice?.id] || []
-    const activeMembers = members.filter(m => m.is_active)
+    // Filter active members (is_active !== false includes NULL/undefined as active)
+    const activeMembers = members.filter(m => m.is_active !== false)
 
     return activeMembers.map(member => {
       const rsvp = practiceRsvps.find(r => r.user_id === member.id)

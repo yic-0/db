@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useAuthStore } from '../store/authStore'
 import { useCalendarStore } from '../store/calendarStore'
 import { usePracticeStore } from '../store/practiceStore'
+import { useEventStore } from '../store/eventStore'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek, isToday } from 'date-fns'
 import Icon from '../components/Icon'
 import toast from 'react-hot-toast'
@@ -28,6 +29,7 @@ export default function Calendar() {
   } = useCalendarStore()
 
   const { practices, fetchPractices, createPractice } = usePracticeStore()
+  const { events, fetchEvents } = useEventStore()
 
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [activeTab, setActiveTab] = useState('calendar')
@@ -99,6 +101,7 @@ export default function Calendar() {
     fetchProspectiveRaces()
     fetchConfirmedRaces()
     fetchPractices()
+    fetchEvents()
     if (user) {
       fetchCalendarSettings(user.id)
     }
@@ -159,6 +162,22 @@ export default function Calendar() {
             type: 'confirmed_race',
             color: 'bg-green-500',
             data: race
+          })
+        }
+      })
+    }
+
+    // Add team events from eventStore
+    if (calendarSettings?.show_team_events) {
+      const teamEvents = useEventStore.getState().events
+      teamEvents.forEach(event => {
+        if (event.event_date === dayStr) {
+          events.push({
+            id: `event-${event.id}`,
+            title: event.title,
+            type: 'team_event',
+            color: 'bg-purple-500',
+            data: event
           })
         }
       })
@@ -367,6 +386,20 @@ export default function Calendar() {
       // Workout assignments require additional database setup
       toast.success('Workout reminder added! Members can log their workouts in the Workouts section.')
       result = { success: true }
+    } else if (quickAddType === 'prospective_race') {
+      if (!quickAddForm.title) {
+        toast.error('Race name is required')
+        return
+      }
+      result = await createProspectiveRace({
+        name: quickAddForm.title,
+        race_date: quickAddForm.date,
+        location: quickAddForm.location || null,
+        description: quickAddForm.description || null,
+        status: 'prospective',
+        created_by: user.id,
+        is_visible_to_members: true
+      })
     } else if (quickAddType === 'race') {
       if (!quickAddForm.title) {
         toast.error('Race name is required')
@@ -430,14 +463,6 @@ export default function Calendar() {
             >
               <Icon name="plus" size={18} />
               Quick Add
-            </button>
-          )}
-          {isCoachOrAdmin && (
-            <button
-              onClick={() => setShowProspectiveForm(true)}
-              className="btn btn-secondary"
-            >
-              + Prospective Race
             </button>
           )}
         </div>
@@ -1436,7 +1461,7 @@ export default function Calendar() {
               {/* Event Type Selector */}
               <div className="mb-6">
                 <label className="label">Event Type</label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
                     onClick={() => setQuickAddType('practice')}
@@ -1463,6 +1488,18 @@ export default function Calendar() {
                   </button>
                   <button
                     type="button"
+                    onClick={() => setQuickAddType('prospective_race')}
+                    className={`p-3 rounded-xl border-2 transition-all ${
+                      quickAddType === 'prospective_race'
+                        ? 'border-orange-500 bg-orange-50 text-orange-700'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <Icon name="calendar" size={24} className={quickAddType === 'prospective_race' ? 'text-orange-600' : 'text-gray-500'} />
+                    <div className="text-sm font-medium mt-1">Prospective Race</div>
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setQuickAddType('race')}
                     className={`p-3 rounded-xl border-2 transition-all ${
                       quickAddType === 'race'
@@ -1471,7 +1508,7 @@ export default function Calendar() {
                     }`}
                   >
                     <Icon name="trophy" size={24} className={quickAddType === 'race' ? 'text-accent-600' : 'text-gray-500'} />
-                    <div className="text-sm font-medium mt-1">Race</div>
+                    <div className="text-sm font-medium mt-1">Confirmed Race</div>
                   </button>
                 </div>
               </div>
@@ -1491,6 +1528,8 @@ export default function Calendar() {
                         ? 'e.g., Morning Practice'
                         : quickAddType === 'workout'
                         ? 'e.g., Core Strength Workout'
+                        : quickAddType === 'prospective_race'
+                        ? 'e.g., Summer Festival (considering)'
                         : 'e.g., Dragon Boat Festival'
                     }
                     required
@@ -1508,7 +1547,7 @@ export default function Calendar() {
                   />
                 </div>
 
-                {quickAddType !== 'workout' && (
+                {quickAddType !== 'workout' && quickAddType !== 'prospective_race' && (
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="label">Start Time {quickAddType === 'practice' && '*'}</label>
@@ -1563,7 +1602,7 @@ export default function Calendar() {
                   </>
                 )}
 
-                {quickAddType !== 'workout' && (
+                {(quickAddType === 'practice' || quickAddType === 'race' || quickAddType === 'prospective_race') && (
                   <div>
                     <label className="label">Location</label>
                     <input
@@ -1605,10 +1644,12 @@ export default function Calendar() {
                         ? 'btn-primary'
                         : quickAddType === 'workout'
                         ? 'btn-success'
+                        : quickAddType === 'prospective_race'
+                        ? 'bg-orange-600 text-white hover:bg-orange-700'
                         : 'btn-accent'
                     }`}
                   >
-                    Create {quickAddType === 'practice' ? 'Practice' : quickAddType === 'workout' ? 'Workout' : 'Race'}
+                    Create {quickAddType === 'practice' ? 'Practice' : quickAddType === 'workout' ? 'Workout' : quickAddType === 'prospective_race' ? 'Prospective Race' : 'Confirmed Race'}
                   </button>
                 </div>
               </form>

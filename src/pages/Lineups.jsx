@@ -21,16 +21,22 @@ export default function Lineups() {
   const [selectedPracticeId, setSelectedPracticeId] = useState('')
   const [rsvpFilter, setRsvpFilter] = useState('all')
   const [boatRows, setBoatRows] = useState(10) // Number of rows (pairs), default 10
+  const [comparisonMode, setComparisonMode] = useState(false) // Toggle for comparison mode
 
   // Available members pool
   const [availableMembers, setAvailableMembers] = useState([])
 
   // Boat positions (paddlers + steersperson + drummer + alternates)
+  // Each position can have primary and secondary (for comparison)
   const [boatPositions, setBoatPositions] = useState({
     drummer: null,
+    drummer_secondary: null,
     left: Array(10).fill(null),  // Positions 1-10 on left (will resize based on boatRows)
+    left_secondary: Array(10).fill(null),
     right: Array(10).fill(null), // Positions 1-10 on right (will resize based on boatRows)
+    right_secondary: Array(10).fill(null),
     steersperson: null,
+    steersperson_secondary: null,
     alternates: [null, null, null, null] // 4 alternate slots
   })
 
@@ -121,11 +127,21 @@ export default function Lineups() {
       draggedMember = availableMembers[source.index]
     } else if (source.droppableId === 'drummer') {
       draggedMember = boatPositions.drummer
+    } else if (source.droppableId === 'drummer-secondary') {
+      draggedMember = boatPositions.drummer_secondary
     } else if (source.droppableId === 'steersperson') {
       draggedMember = boatPositions.steersperson
+    } else if (source.droppableId === 'steersperson-secondary') {
+      draggedMember = boatPositions.steersperson_secondary
+    } else if (source.droppableId.startsWith('left-') && source.droppableId.includes('-secondary')) {
+      const index = parseInt(source.droppableId.split('-')[1])
+      draggedMember = boatPositions.left_secondary[index]
     } else if (source.droppableId.startsWith('left-')) {
       const index = parseInt(source.droppableId.split('-')[1])
       draggedMember = boatPositions.left[index]
+    } else if (source.droppableId.startsWith('right-') && source.droppableId.includes('-secondary')) {
+      const index = parseInt(source.droppableId.split('-')[1])
+      draggedMember = boatPositions.right_secondary[index]
     } else if (source.droppableId.startsWith('right-')) {
       const index = parseInt(source.droppableId.split('-')[1])
       draggedMember = boatPositions.right[index]
@@ -144,12 +160,24 @@ export default function Lineups() {
       newAvailableMembers.splice(source.index, 1)
     } else if (source.droppableId === 'drummer') {
       newBoatPositions.drummer = null
+    } else if (source.droppableId === 'drummer-secondary') {
+      newBoatPositions.drummer_secondary = null
     } else if (source.droppableId === 'steersperson') {
       newBoatPositions.steersperson = null
+    } else if (source.droppableId === 'steersperson-secondary') {
+      newBoatPositions.steersperson_secondary = null
+    } else if (source.droppableId.startsWith('left-') && source.droppableId.includes('-secondary')) {
+      const index = parseInt(source.droppableId.split('-')[1])
+      newBoatPositions.left_secondary = [...boatPositions.left_secondary]
+      newBoatPositions.left_secondary[index] = null
     } else if (source.droppableId.startsWith('left-')) {
       const index = parseInt(source.droppableId.split('-')[1])
       newBoatPositions.left = [...boatPositions.left]
       newBoatPositions.left[index] = null
+    } else if (source.droppableId.startsWith('right-') && source.droppableId.includes('-secondary')) {
+      const index = parseInt(source.droppableId.split('-')[1])
+      newBoatPositions.right_secondary = [...boatPositions.right_secondary]
+      newBoatPositions.right_secondary[index] = null
     } else if (source.droppableId.startsWith('right-')) {
       const index = parseInt(source.droppableId.split('-')[1])
       newBoatPositions.right = [...boatPositions.right]
@@ -166,9 +194,22 @@ export default function Lineups() {
     } else if (destination.droppableId === 'drummer') {
       displacedMember = newBoatPositions.drummer
       newBoatPositions.drummer = draggedMember
+    } else if (destination.droppableId === 'drummer-secondary') {
+      displacedMember = newBoatPositions.drummer_secondary
+      newBoatPositions.drummer_secondary = draggedMember
     } else if (destination.droppableId === 'steersperson') {
       displacedMember = newBoatPositions.steersperson
       newBoatPositions.steersperson = draggedMember
+    } else if (destination.droppableId === 'steersperson-secondary') {
+      displacedMember = newBoatPositions.steersperson_secondary
+      newBoatPositions.steersperson_secondary = draggedMember
+    } else if (destination.droppableId.startsWith('left-') && destination.droppableId.includes('-secondary')) {
+      const index = parseInt(destination.droppableId.split('-')[1])
+      if (!newBoatPositions.left_secondary || newBoatPositions.left_secondary === boatPositions.left_secondary) {
+        newBoatPositions.left_secondary = [...boatPositions.left_secondary]
+      }
+      displacedMember = newBoatPositions.left_secondary[index]
+      newBoatPositions.left_secondary[index] = draggedMember
     } else if (destination.droppableId.startsWith('left-')) {
       const index = parseInt(destination.droppableId.split('-')[1])
       if (!newBoatPositions.left || newBoatPositions.left === boatPositions.left) {
@@ -176,6 +217,13 @@ export default function Lineups() {
       }
       displacedMember = newBoatPositions.left[index]
       newBoatPositions.left[index] = draggedMember
+    } else if (destination.droppableId.startsWith('right-') && destination.droppableId.includes('-secondary')) {
+      const index = parseInt(destination.droppableId.split('-')[1])
+      if (!newBoatPositions.right_secondary || newBoatPositions.right_secondary === boatPositions.right_secondary) {
+        newBoatPositions.right_secondary = [...boatPositions.right_secondary]
+      }
+      displacedMember = newBoatPositions.right_secondary[index]
+      newBoatPositions.right_secondary[index] = draggedMember
     } else if (destination.droppableId.startsWith('right-')) {
       const index = parseInt(destination.droppableId.split('-')[1])
       if (!newBoatPositions.right || newBoatPositions.right === boatPositions.right) {
@@ -205,12 +253,16 @@ export default function Lineups() {
   const handleBoatSizeChange = (newSize) => {
     const currentLeft = [...boatPositions.left]
     const currentRight = [...boatPositions.right]
+    const currentLeftSecondary = [...(boatPositions.left_secondary || Array(boatRows).fill(null))]
+    const currentRightSecondary = [...(boatPositions.right_secondary || Array(boatRows).fill(null))]
 
     // If shrinking the boat, move displaced members back to available
     if (newSize < boatRows) {
       const displacedMembers = [
         ...currentLeft.slice(newSize).filter(m => m !== null),
-        ...currentRight.slice(newSize).filter(m => m !== null)
+        ...currentRight.slice(newSize).filter(m => m !== null),
+        ...currentLeftSecondary.slice(newSize).filter(m => m !== null),
+        ...currentRightSecondary.slice(newSize).filter(m => m !== null)
       ]
       if (displacedMembers.length > 0) {
         setAvailableMembers([...availableMembers, ...displacedMembers])
@@ -226,11 +278,21 @@ export default function Lineups() {
       ? [...currentRight, ...Array(newSize - currentRight.length).fill(null)]
       : currentRight.slice(0, newSize)
 
+    const newLeftSecondary = newSize > currentLeftSecondary.length
+      ? [...currentLeftSecondary, ...Array(newSize - currentLeftSecondary.length).fill(null)]
+      : currentLeftSecondary.slice(0, newSize)
+
+    const newRightSecondary = newSize > currentRightSecondary.length
+      ? [...currentRightSecondary, ...Array(newSize - currentRightSecondary.length).fill(null)]
+      : currentRightSecondary.slice(0, newSize)
+
     setBoatRows(newSize)
     setBoatPositions({
       ...boatPositions,
       left: newLeft,
-      right: newRight
+      right: newRight,
+      left_secondary: newLeftSecondary,
+      right_secondary: newRightSecondary
     })
 
     toast.success(`Boat size changed to ${newSize} rows (${newSize * 2} paddlers)`)
@@ -335,9 +397,13 @@ export default function Lineups() {
     // Only clear positions, keep editing state and name/notes
     setBoatPositions({
       drummer: null,
+      drummer_secondary: null,
       left: Array(boatRows).fill(null),
+      left_secondary: Array(boatRows).fill(null),
       right: Array(boatRows).fill(null),
+      right_secondary: Array(boatRows).fill(null),
       steersperson: null,
+      steersperson_secondary: null,
       alternates: [null, null, null, null]
     })
     setAvailableMembers(members.filter(m => m.is_active))
@@ -348,15 +414,20 @@ export default function Lineups() {
     // Full reset - clear everything including editing state
     setBoatPositions({
       drummer: null,
+      drummer_secondary: null,
       left: Array(boatRows).fill(null),
+      left_secondary: Array(boatRows).fill(null),
       right: Array(boatRows).fill(null),
+      right_secondary: Array(boatRows).fill(null),
       steersperson: null,
+      steersperson_secondary: null,
       alternates: [null, null, null, null]
     })
     setAvailableMembers(members.filter(m => m.is_active))
     setEditingLineupId(null)
     setLineupName('')
     setLineupNotes('')
+    setComparisonMode(false)
     toast.success('Lineup cleared')
   }
 
@@ -413,7 +484,7 @@ export default function Lineups() {
   const calculateBalance = () => {
     const positions = boatPositions
 
-    // Calculate total weight
+    // Calculate primary weights
     const drummerWeight = positions.drummer?.weight_kg || 0
     const steerspersonWeight = positions.steersperson?.weight_kg || 0
 
@@ -423,6 +494,17 @@ export default function Lineups() {
     const leftTotal = leftWeights.reduce((sum, w) => sum + w, 0)
     const rightTotal = rightWeights.reduce((sum, w) => sum + w, 0)
     const totalWeight = drummerWeight + steerspersonWeight + leftTotal + rightTotal
+
+    // Calculate secondary weights (for comparison)
+    const drummerWeightSecondary = positions.drummer_secondary?.weight_kg || 0
+    const steerspersonWeightSecondary = positions.steersperson_secondary?.weight_kg || 0
+
+    const leftWeightsSecondary = (positions.left_secondary || []).map(m => m?.weight_kg || 0)
+    const rightWeightsSecondary = (positions.right_secondary || []).map(m => m?.weight_kg || 0)
+
+    const leftTotalSecondary = leftWeightsSecondary.reduce((sum, w) => sum + w, 0)
+    const rightTotalSecondary = rightWeightsSecondary.reduce((sum, w) => sum + w, 0)
+    const totalWeightSecondary = drummerWeightSecondary + steerspersonWeightSecondary + leftTotalSecondary + rightTotalSecondary
 
     // Calculate front/back balance (positions 1-5 vs 6-10)
     const frontLeft = leftWeights.slice(0, 5).reduce((sum, w) => sum + w, 0)
@@ -443,6 +525,12 @@ export default function Lineups() {
     const frontBackDiff = Math.abs(frontTotal - backTotal)
     const frontBackBalance = totalWeight > 0 ? (frontBackDiff / totalWeight) * 100 : 0
 
+    // Calculate comparison differences
+    const hasSecondary = totalWeightSecondary > 0
+    const totalWeightDiff = totalWeightSecondary - totalWeight
+    const leftTotalDiff = leftTotalSecondary - leftTotal
+    const rightTotalDiff = rightTotalSecondary - rightTotal
+
     return {
       totalWeight,
       leftTotal,
@@ -454,7 +542,15 @@ export default function Lineups() {
       frontBackDiff,
       frontBackBalance,
       drummerWeight,
-      steerspersonWeight
+      steerspersonWeight,
+      // Secondary comparison data
+      hasSecondary,
+      totalWeightSecondary,
+      totalWeightDiff,
+      leftTotalSecondary,
+      leftTotalDiff,
+      rightTotalSecondary,
+      rightTotalDiff
     }
   }
 
@@ -534,26 +630,68 @@ export default function Lineups() {
     )
   }
 
-  const BoatPosition = ({ droppableId, member, label, side }) => (
-    <Droppable droppableId={droppableId}>
-      {(provided, snapshot) => (
-        <div
-          ref={provided.innerRef}
-          {...provided.droppableProps}
-          className={`p-2 border-2 border-dashed rounded-lg min-h-[60px] flex items-center justify-center ${
-            snapshot.isDraggingOver ? 'bg-primary-50 border-primary-300' : 'bg-gray-50 border-gray-300'
-          }`}
-        >
-          {member ? (
-            <MemberCard member={member} index={0} />
-          ) : (
-            <span className="text-xs text-gray-400">{label}</span>
+  const BoatPosition = ({ droppableId, member, label, side, secondaryMember = null, showSecondary = false }) => {
+    const primaryWeight = member?.weight_kg || 0
+    const secondaryWeight = secondaryMember?.weight_kg || 0
+    const weightDiff = secondaryWeight - primaryWeight
+
+    return (
+      <div className={`${showSecondary ? 'space-y-1' : ''}`}>
+        {/* Primary Position */}
+        <Droppable droppableId={droppableId}>
+          {(provided, snapshot) => (
+            <div
+              ref={provided.innerRef}
+              {...provided.droppableProps}
+              className={`p-2 border-2 border-dashed rounded-lg min-h-[60px] flex items-center justify-center ${
+                snapshot.isDraggingOver ? 'bg-primary-50 border-primary-300' : 'bg-gray-50 border-gray-300'
+              }`}
+            >
+              {member ? (
+                <MemberCard member={member} index={0} />
+              ) : (
+                <span className="text-xs text-gray-400">{label}</span>
+              )}
+              {provided.placeholder}
+            </div>
           )}
-          {provided.placeholder}
-        </div>
-      )}
-    </Droppable>
-  )
+        </Droppable>
+
+        {/* Secondary Position (Comparison) */}
+        {showSecondary && (
+          <Droppable droppableId={`${droppableId}-secondary`}>
+            {(provided, snapshot) => (
+              <div
+                ref={provided.innerRef}
+                {...provided.droppableProps}
+                className={`p-2 border-2 border-dashed rounded-lg min-h-[50px] flex items-center justify-center relative ${
+                  snapshot.isDraggingOver ? 'bg-orange-50 border-orange-300' : 'bg-orange-50/50 border-orange-200'
+                }`}
+              >
+                <div className="absolute top-0 left-1 text-xs font-bold text-orange-600">ALT</div>
+                {secondaryMember ? (
+                  <div className="w-full">
+                    <div className="text-xs font-medium text-gray-900">{secondaryMember.full_name}</div>
+                    <div className="flex items-center gap-1 text-xs">
+                      <span className="text-gray-500">{secondaryWeight} kg</span>
+                      {member && weightDiff !== 0 && (
+                        <span className={`font-bold ${weightDiff > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                          ({weightDiff > 0 ? '+' : ''}{weightDiff.toFixed(1)} kg)
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <span className="text-xs text-orange-400">Compare</span>
+                )}
+                {provided.placeholder}
+              </div>
+            )}
+          </Droppable>
+        )}
+      </div>
+    )
+  }
 
   if (!hasRole('admin')) {
     return (
@@ -575,8 +713,20 @@ export default function Lineups() {
               ✏️ Editing: {lineupName || 'Unnamed Lineup'}
             </p>
           )}
+          {comparisonMode && (
+            <p className="text-sm text-orange-600 mt-1">
+              ⚖️ Comparison Mode: Drag alternate members to compare weights
+            </p>
+          )}
         </div>
         <div className="flex gap-2">
+          <button
+            onClick={() => setComparisonMode(!comparisonMode)}
+            className={`btn ${comparisonMode ? 'bg-orange-600 hover:bg-orange-700 text-white' : 'bg-orange-100 hover:bg-orange-200 text-orange-700'}`}
+            title="Toggle comparison mode to compare paddlers side-by-side"
+          >
+            ⚖️ {comparisonMode ? 'Exit Compare' : 'Compare Mode'}
+          </button>
           <button
             onClick={handleResetPositions}
             className="btn bg-gray-500 hover:bg-gray-600 text-white"
@@ -745,7 +895,14 @@ export default function Lineups() {
           {/* Total Weight */}
           <div className="bg-white rounded-lg p-3 shadow-sm">
             <p className="text-xs text-gray-600">Total Weight</p>
-            <p className="text-2xl font-bold text-gray-900">{balance.totalWeight.toFixed(1)} kg</p>
+            <p className="text-2xl font-bold text-gray-900">
+              {balance.totalWeight.toFixed(1)} kg
+              {comparisonMode && balance.hasSecondary && (
+                <span className={`text-sm ml-1 ${balance.totalWeightDiff > 0 ? 'text-red-600' : balance.totalWeightDiff < 0 ? 'text-green-600' : 'text-gray-500'}`}>
+                  ({balance.totalWeightDiff > 0 ? '+' : ''}{balance.totalWeightDiff.toFixed(1)})
+                </span>
+              )}
+            </p>
           </div>
 
           {/* Left vs Right */}
@@ -753,7 +910,20 @@ export default function Lineups() {
             <p className="text-xs text-gray-600">Left vs Right</p>
             <div className="flex items-center gap-2">
               <p className="text-lg font-bold text-gray-900">
-                {balance.leftTotal.toFixed(1)} / {balance.rightTotal.toFixed(1)} kg
+                {balance.leftTotal.toFixed(1)}
+                {comparisonMode && balance.leftTotalDiff !== 0 && (
+                  <span className={`text-xs ml-0.5 ${balance.leftTotalDiff > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                    ({balance.leftTotalDiff > 0 ? '+' : ''}{balance.leftTotalDiff.toFixed(1)})
+                  </span>
+                )}
+                {' / '}
+                {balance.rightTotal.toFixed(1)}
+                {comparisonMode && balance.rightTotalDiff !== 0 && (
+                  <span className={`text-xs ml-0.5 ${balance.rightTotalDiff > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                    ({balance.rightTotalDiff > 0 ? '+' : ''}{balance.rightTotalDiff.toFixed(1)})
+                  </span>
+                )}
+                {' kg'}
               </p>
             </div>
             <div className={`text-xs font-semibold mt-1 ${getBalanceStatus(balance.sideBalance).color}`}>
@@ -954,7 +1124,13 @@ export default function Lineups() {
                 {/* Drummer */}
                 <div>
                   <h4 className="text-sm font-medium text-gray-700 mb-2">Drummer</h4>
-                  <BoatPosition droppableId="drummer" member={boatPositions.drummer} label="Drag drummer here" />
+                  <BoatPosition
+                    droppableId="drummer"
+                    member={boatPositions.drummer}
+                    label="Drag drummer here"
+                    secondaryMember={boatPositions.drummer_secondary}
+                    showSecondary={comparisonMode}
+                  />
                 </div>
 
                 {/* Paddlers Grid */}
@@ -974,6 +1150,8 @@ export default function Lineups() {
                                 member={member}
                                 label={`Position ${index + 1}`}
                                 side="left"
+                                secondaryMember={boatPositions.left_secondary?.[index]}
+                                showSecondary={comparisonMode}
                               />
                             </div>
                           </div>
@@ -994,6 +1172,8 @@ export default function Lineups() {
                                 member={member}
                                 label={`Position ${index + 1}`}
                                 side="right"
+                                secondaryMember={boatPositions.right_secondary?.[index]}
+                                showSecondary={comparisonMode}
                               />
                             </div>
                           </div>
@@ -1006,7 +1186,13 @@ export default function Lineups() {
                 {/* Steersperson */}
                 <div>
                   <h4 className="text-sm font-medium text-gray-700 mb-2">Steersperson</h4>
-                  <BoatPosition droppableId="steersperson" member={boatPositions.steersperson} label="Drag steersperson here" />
+                  <BoatPosition
+                    droppableId="steersperson"
+                    member={boatPositions.steersperson}
+                    label="Drag steersperson here"
+                    secondaryMember={boatPositions.steersperson_secondary}
+                    showSecondary={comparisonMode}
+                  />
                 </div>
 
                 {/* Alternates Section */}

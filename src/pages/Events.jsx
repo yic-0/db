@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useEventStore } from '../store/eventStore'
+import { useCalendarStore } from '../store/calendarStore'
 import { useAuthStore } from '../store/authStore'
 import { format, isPast, isFuture, isToday } from 'date-fns'
 import toast from 'react-hot-toast'
@@ -8,10 +9,12 @@ import toast from 'react-hot-toast'
 export default function Events() {
   const navigate = useNavigate()
   const { events, rsvps, loading, fetchEvents, fetchRSVPs, setRSVP, createEvent } = useEventStore()
+  const { prospectiveRaces, confirmedRaces, fetchProspectiveRaces, fetchConfirmedRaces } = useCalendarStore()
   const { user, hasRole } = useAuthStore()
   const [filter, setFilter] = useState('upcoming') // 'all', 'upcoming', 'past'
   const [eventTypeFilter, setEventTypeFilter] = useState('all')
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
+  const [showCalendarRaces, setShowCalendarRaces] = useState(true)
   const [newEvent, setNewEvent] = useState({
     title: '',
     event_type: 'race',
@@ -24,11 +27,13 @@ export default function Events() {
     captains_meeting_time: '',
     max_participants: '',
     registration_deadline: '',
-    status: 'planning'
+    status: 'prospective'
   })
 
   useEffect(() => {
     fetchEvents()
+    fetchProspectiveRaces()
+    fetchConfirmedRaces()
   }, [fetchEvents])
 
   useEffect(() => {
@@ -88,6 +93,9 @@ export default function Events() {
     if (isPast(eventDate)) {
       return { label: 'Past', color: 'bg-gray-100 text-gray-600' }
     }
+    if (event.status === 'prospective') {
+      return { label: 'Prospective', color: 'bg-orange-100 text-orange-800' }
+    }
     if (event.status === 'confirmed') {
       return { label: 'Confirmed', color: 'bg-blue-100 text-blue-800' }
     }
@@ -123,7 +131,43 @@ export default function Events() {
     }
   }
 
-  const filteredEvents = events.filter(event => {
+  // Convert calendar races to event-like format
+  const calendarRacesAsEvents = showCalendarRaces ? [
+    ...prospectiveRaces
+      .filter(race => race.status === 'prospective')
+      .map(race => ({
+        id: `prospective-${race.id}`,
+        title: race.name,
+        event_type: 'race',
+        description: race.description,
+        location: race.location,
+        event_date: race.race_date,
+        start_time: null,
+        end_time: null,
+        status: 'prospective',
+        isCalendarRace: true,
+        raceType: 'prospective',
+        originalData: race
+      })),
+    ...confirmedRaces.map(race => ({
+      id: `confirmed-${race.id}`,
+      title: race.name,
+      event_type: 'race',
+      description: race.description,
+      location: race.location,
+      event_date: race.race_date,
+      start_time: race.race_start_time,
+      end_time: race.race_end_time,
+      status: 'confirmed',
+      isCalendarRace: true,
+      raceType: 'confirmed',
+      originalData: race
+    }))
+  ] : []
+
+  const allEvents = [...events, ...calendarRacesAsEvents]
+
+  const filteredEvents = allEvents.filter(event => {
     const eventDate = new Date(event.event_date)
 
     // Date filter
@@ -140,7 +184,7 @@ export default function Events() {
     }
 
     return true
-  })
+  }).sort((a, b) => new Date(a.event_date) - new Date(b.event_date))
 
   const formatDate = (dateStr) => {
     try {
@@ -236,6 +280,23 @@ export default function Events() {
               <option value="other">Other</option>
             </select>
           </div>
+
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-medium text-gray-700">
+              <input
+                type="checkbox"
+                checked={showCalendarRaces}
+                onChange={(e) => setShowCalendarRaces(e.target.checked)}
+                className="mr-2"
+              />
+              Include Calendar Races
+            </label>
+            {showCalendarRaces && (
+              <span className="text-xs text-gray-500">
+                ({prospectiveRaces.length + confirmedRaces.length} from calendar)
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
@@ -278,6 +339,11 @@ export default function Events() {
                           <span className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-700 capitalize">
                             {event.event_type.replace('_', ' ')}
                           </span>
+                          {event.isCalendarRace && (
+                            <span className="px-2 py-1 text-xs rounded bg-indigo-100 text-indigo-700">
+                              📅 From Calendar
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -333,14 +399,23 @@ export default function Events() {
                   </div>
 
                   <div className="ml-6 flex flex-col gap-2">
-                    <button
-                      onClick={() => navigate(`/events/${event.id}`)}
-                      className="btn btn-secondary text-sm"
-                    >
-                      View Details
-                    </button>
+                    {event.isCalendarRace ? (
+                      <button
+                        onClick={() => navigate('/calendar')}
+                        className="btn btn-secondary text-sm"
+                      >
+                        View in Calendar
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => navigate(`/events/${event.id}`)}
+                        className="btn btn-secondary text-sm"
+                      >
+                        View Details
+                      </button>
+                    )}
 
-                    {user && (
+                    {user && !event.isCalendarRace && (
                       <div className="flex flex-col gap-1">
                         <div className="text-xs text-gray-600 text-center mb-1">
                           {userRSVP ? `You're ${userRSVP.status}` : 'RSVP:'}
@@ -391,6 +466,12 @@ export default function Events() {
                             ❌
                           </button>
                         </div>
+                      </div>
+                    )}
+
+                    {user && event.isCalendarRace && (
+                      <div className="text-xs text-gray-500 text-center">
+                        Manage in Calendar
                       </div>
                     )}
                   </div>
@@ -452,6 +533,7 @@ export default function Events() {
                       value={newEvent.status}
                       onChange={(e) => setNewEvent({ ...newEvent, status: e.target.value })}
                     >
+                      <option value="prospective">Prospective</option>
                       <option value="planning">Planning</option>
                       <option value="registration_open">Registration Open</option>
                       <option value="confirmed">Confirmed</option>
