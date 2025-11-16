@@ -3,18 +3,35 @@ import { useNavigate } from 'react-router-dom'
 import { useEventStore } from '../store/eventStore'
 import { useCalendarStore } from '../store/calendarStore'
 import { useAuthStore } from '../store/authStore'
-import { format, isPast, isFuture, isToday } from 'date-fns'
+import { format, isPast, isFuture, isToday, parseISO } from 'date-fns'
 import toast from 'react-hot-toast'
+import Icon from '../components/Icon'
 
 export default function Events() {
   const navigate = useNavigate()
-  const { events, rsvps, loading, fetchEvents, fetchRSVPs, setRSVP, createEvent } = useEventStore()
-  const { prospectiveRaces, confirmedRaces, fetchProspectiveRaces, fetchConfirmedRaces } = useCalendarStore()
+  const { events, rsvps, loading, fetchEvents, fetchRSVPs, setRSVP, createEvent, updateEvent } = useEventStore()
+  const {
+    prospectiveRaces,
+    confirmedRaces,
+    fetchProspectiveRaces,
+    fetchConfirmedRaces,
+    updateProspectiveRace,
+    updateConfirmedRace
+  } = useCalendarStore()
   const { user, hasRole } = useAuthStore()
   const [filter, setFilter] = useState('upcoming') // 'all', 'upcoming', 'past'
   const [eventTypeFilter, setEventTypeFilter] = useState('all')
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [showCalendarRaces, setShowCalendarRaces] = useState(true)
+  const [editingEventId, setEditingEventId] = useState(null)
+  const [editForm, setEditForm] = useState({
+    title: '',
+    event_date: '',
+    start_time: '',
+    end_time: '',
+    location: '',
+    description: ''
+  })
   const [newEvent, setNewEvent] = useState({
     title: '',
     event_type: 'race',
@@ -78,8 +95,98 @@ export default function Events() {
     await setRSVP(eventId, user.id, status)
   }
 
+  const handleStartEdit = (event) => {
+    setEditingEventId(event.id)
+
+    if (event.isCalendarRace) {
+      // Calendar race - map original data
+      const data = event.originalData || {}
+      setEditForm({
+        title: data.name || event.title || '',
+        event_date: data.race_date || event.event_date || '',
+        start_time: data.race_start_time || event.start_time || '',
+        end_time: data.race_end_time || event.end_time || '',
+        location: data.location || event.location || '',
+        description: data.description || event.description || ''
+      })
+    } else {
+      // Regular team event
+      setEditForm({
+        title: event.title || '',
+        event_date: event.event_date || '',
+        start_time: event.start_time || '',
+        end_time: event.end_time || '',
+        location: event.location || '',
+        description: event.description || ''
+      })
+    }
+  }
+
+  const handleSaveEdit = async (event) => {
+    if (!editingEventId) return
+
+    let result = { success: false }
+
+    if (event.isCalendarRace) {
+      // Get the actual ID from the prefixed id
+      const actualId = event.originalData?.id
+      if (!actualId) {
+        toast.error('Cannot update: missing race ID')
+        return
+      }
+
+      if (event.raceType === 'prospective') {
+        result = await updateProspectiveRace(actualId, {
+          name: editForm.title,
+          race_date: editForm.event_date,
+          location: editForm.location || null,
+          description: editForm.description || null
+        })
+      } else if (event.raceType === 'confirmed') {
+        result = await updateConfirmedRace(actualId, {
+          name: editForm.title,
+          race_date: editForm.event_date,
+          race_start_time: editForm.start_time || null,
+          race_end_time: editForm.end_time || null,
+          location: editForm.location || null,
+          description: editForm.description || null
+        })
+      }
+    } else {
+      // Regular team event
+      result = await updateEvent(event.id, {
+        title: editForm.title,
+        event_date: editForm.event_date,
+        start_time: editForm.start_time || null,
+        end_time: editForm.end_time || null,
+        location: editForm.location || null,
+        description: editForm.description || null
+      })
+    }
+
+    if (result.success) {
+      setEditingEventId(null)
+      // Refresh data
+      fetchEvents()
+      fetchProspectiveRaces()
+      fetchConfirmedRaces()
+    }
+  }
+
+  const handleCancelEdit = () => {
+    setEditingEventId(null)
+  }
+
+  // Helper to parse date strings correctly
+  const parseDateString = (dateStr) => {
+    if (!dateStr) return new Date()
+    return typeof dateStr === 'string' && dateStr.length === 10
+      ? parseISO(dateStr)
+      : new Date(dateStr)
+  }
+
   const getEventStatusBadge = (event) => {
-    const eventDate = new Date(event.event_date)
+    const eventDate = parseDateString(event.event_date)
 
     if (event.status === 'cancelled') {
       return { label: 'Cancelled', color: 'bg-red-100 text-red-800' }
@@ -168,7 +275,7 @@ export default function Events() {
   const allEvents = [...events, ...calendarRacesAsEvents]
 
   const filteredEvents = allEvents.filter(event => {
-    const eventDate = new Date(event.event_date)
+    const eventDate = parseDateString(event.event_date)
 
     // Date filter
     if (filter === 'upcoming' && isPast(eventDate) && !isToday(eventDate)) {
@@ -184,11 +291,15 @@ export default function Events() {
     }
 
     return true
-  }).sort((a, b) => new Date(a.event_date) - new Date(b.event_date))
+  }).sort((a, b) => parseDateString(a.event_date) - parseDateString(b.event_date))
 
   const formatDate = (dateStr) => {
     try {
-      return format(new Date(dateStr), 'EEEE, MMM d, yyyy')
+      // Use parseISO to correctly handle YYYY-MM-DD strings in local timezone
+      const date = typeof dateStr === 'string' && dateStr.length === 10
+        ? parseISO(dateStr)
+        : new Date(dateStr)
+      return format(date, 'EEEE, MMM d, yyyy')
     } catch {
       return dateStr
     }
@@ -323,159 +434,279 @@ export default function Events() {
             const userRSVP = getUserRSVP(event.id)
             const rsvpCounts = getRSVPCounts(event.id)
             const statusBadge = getEventStatusBadge(event)
+            const isEditing = editingEventId === event.id
 
             return (
               <div key={event.id} className="card hover:shadow-lg transition-shadow">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <span className="text-3xl">{getEventTypeIcon(event.event_type)}</span>
-                      <div>
-                        <h3 className="text-xl font-semibold text-gray-900">{event.title}</h3>
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className={`px-2 py-1 text-xs rounded font-medium ${statusBadge.color}`}>
-                            {statusBadge.label}
+                {isEditing ? (
+                  // Edit Form
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-2">
+                        <span className="text-2xl">{getEventTypeIcon(event.event_type)}</span>
+                        <span className="text-lg font-semibold text-gray-900">Editing Event</span>
+                        {event.isCalendarRace && (
+                          <span className="px-2 py-1 text-xs rounded bg-indigo-100 text-indigo-700">
+                            📅 Calendar Race
                           </span>
-                          <span className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-700 capitalize">
-                            {event.event_type.replace('_', ' ')}
-                          </span>
-                          {event.isCalendarRace && (
-                            <span className="px-2 py-1 text-xs rounded bg-indigo-100 text-indigo-700">
-                              📅 From Calendar
-                            </span>
-                          )}
-                        </div>
+                        )}
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 text-sm">
+                    <div>
+                      <label className="label">Title/Name *</label>
+                      <input
+                        type="text"
+                        value={editForm.title}
+                        onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                        className="input"
+                        required
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div>
-                        <div className="flex items-start gap-2 mb-2">
-                          <span className="text-gray-600">📅</span>
-                          <div>
-                            <div className="font-medium text-gray-900">{formatDate(event.event_date)}</div>
-                            {event.start_time && (
-                              <div className="text-gray-600">
-                                Start: {formatTime(event.start_time)}
-                                {event.end_time && ` - ${formatTime(event.end_time)}`}
-                              </div>
+                        <label className="label">Date *</label>
+                        <input
+                          type="date"
+                          value={editForm.event_date}
+                          onChange={(e) => setEditForm({ ...editForm, event_date: e.target.value })}
+                          className="input"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="label">Start Time</label>
+                        <input
+                          type="time"
+                          value={editForm.start_time}
+                          onChange={(e) => setEditForm({ ...editForm, start_time: e.target.value })}
+                          className="input"
+                        />
+                      </div>
+                      <div>
+                        <label className="label">End Time</label>
+                        <input
+                          type="time"
+                          value={editForm.end_time}
+                          onChange={(e) => setEditForm({ ...editForm, end_time: e.target.value })}
+                          className="input"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="label">Location</label>
+                      <input
+                        type="text"
+                        value={editForm.location}
+                        onChange={(e) => setEditForm({ ...editForm, location: e.target.value })}
+                        className="input"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="label">Description</label>
+                      <textarea
+                        value={editForm.description}
+                        onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                        className="input"
+                        rows={3}
+                      />
+                    </div>
+
+                    <div className="flex justify-between items-center pt-4 border-t">
+                      <div>
+                        {!event.isCalendarRace && (
+                          <button
+                            onClick={() => navigate(`/events/${event.id}`)}
+                            className="btn btn-secondary text-xs"
+                          >
+                            Advanced Options (RSVPs, Tasks, Expenses)
+                          </button>
+                        )}
+                        {event.isCalendarRace && (
+                          <button
+                            onClick={() => navigate('/calendar')}
+                            className="btn btn-secondary text-xs"
+                          >
+                            View Full Details in Calendar
+                          </button>
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={handleCancelEdit}
+                          className="btn btn-secondary text-sm"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={() => handleSaveEdit(event)}
+                          className="btn btn-primary text-sm"
+                        >
+                          Save Changes
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  // Display View
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        <span className="text-3xl">{getEventTypeIcon(event.event_type)}</span>
+                        <div>
+                          <h3 className="text-xl font-semibold text-gray-900">{event.title}</h3>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className={`px-2 py-1 text-xs rounded font-medium ${statusBadge.color}`}>
+                              {statusBadge.label}
+                            </span>
+                            <span className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-700 capitalize">
+                              {event.event_type.replace('_', ' ')}
+                            </span>
+                            {event.isCalendarRace && (
+                              <span className="px-2 py-1 text-xs rounded bg-indigo-100 text-indigo-700">
+                                📅 From Calendar
+                              </span>
                             )}
                           </div>
                         </div>
-                        {event.location && (
-                          <div className="flex items-start gap-2 mb-2">
-                            <span className="text-gray-600">📍</span>
-                            <div className="text-gray-700">{event.location}</div>
-                          </div>
-                        )}
                       </div>
 
-                      <div>
-                        {event.arrival_time && (
-                          <div className="flex items-center gap-2 mb-2">
-                            <span className="text-gray-600">🕐</span>
-                            <span className="text-gray-700">Arrive by: {formatTime(event.arrival_time)}</span>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 text-sm">
+                        <div>
+                          <div className="flex items-start gap-2 mb-2">
+                            <span className="text-gray-600">📅</span>
+                            <div>
+                              <div className="font-medium text-gray-900">{formatDate(event.event_date)}</div>
+                              {event.start_time && (
+                                <div className="text-gray-600">
+                                  Start: {formatTime(event.start_time)}
+                                  {event.end_time && ` - ${formatTime(event.end_time)}`}
+                                </div>
+                              )}
+                            </div>
                           </div>
-                        )}
-                        {event.captains_meeting_time && (
-                          <div className="flex items-center gap-2 mb-2">
-                            <span className="text-gray-600">👥</span>
-                            <span className="text-gray-700">Captain's Meeting: {formatTime(event.captains_meeting_time)}</span>
+                          {event.location && (
+                            <div className="flex items-start gap-2 mb-2">
+                              <span className="text-gray-600">📍</span>
+                              <div className="text-gray-700">{event.location}</div>
+                            </div>
+                          )}
+                        </div>
+
+                        <div>
+                          {event.arrival_time && (
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="text-gray-600">🕐</span>
+                              <span className="text-gray-700">Arrive by: {formatTime(event.arrival_time)}</span>
+                            </div>
+                          )}
+                          {event.captains_meeting_time && (
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="text-gray-600">👥</span>
+                              <span className="text-gray-700">Captain's Meeting: {formatTime(event.captains_meeting_time)}</span>
+                            </div>
+                          )}
+                          <div className="flex items-center gap-2">
+                            <span className="text-gray-600">✅</span>
+                            <span className="text-gray-700">
+                              {rsvpCounts.confirmed} confirmed
+                              {event.max_participants && ` / ${event.max_participants} max`}
+                            </span>
                           </div>
-                        )}
-                        <div className="flex items-center gap-2">
-                          <span className="text-gray-600">✅</span>
-                          <span className="text-gray-700">
-                            {rsvpCounts.confirmed} confirmed
-                            {event.max_participants && ` / ${event.max_participants} max`}
-                          </span>
                         </div>
                       </div>
+
+                      {event.description && (
+                        <p className="text-gray-600 mt-3 text-sm line-clamp-2">{event.description}</p>
+                      )}
                     </div>
 
-                    {event.description && (
-                      <p className="text-gray-600 mt-3 text-sm line-clamp-2">{event.description}</p>
-                    )}
-                  </div>
+                    <div className="ml-6 flex flex-col gap-2">
+                      {(hasRole('admin') || hasRole('coach')) && (
+                        <button
+                          onClick={() => handleStartEdit(event)}
+                          className="btn btn-primary text-sm flex items-center gap-1"
+                        >
+                          <Icon name="manage" size={14} />
+                          Edit
+                        </button>
+                      )}
 
-                  <div className="ml-6 flex flex-col gap-2">
-                    {event.isCalendarRace ? (
-                      <button
-                        onClick={() => navigate('/calendar')}
-                        className="btn btn-secondary text-sm"
-                      >
-                        View in Calendar
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => navigate(`/events/${event.id}`)}
-                        className="btn btn-secondary text-sm"
-                      >
-                        View Details
-                      </button>
-                    )}
+                      {event.isCalendarRace ? (
+                        <button
+                          onClick={() => navigate('/calendar')}
+                          className="btn btn-secondary text-sm"
+                        >
+                          View in Calendar
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => navigate(`/events/${event.id}`)}
+                          className="btn btn-secondary text-sm"
+                        >
+                          View Details
+                        </button>
+                      )}
 
-                    {user && !event.isCalendarRace && (
-                      <div className="flex flex-col gap-1">
-                        <div className="text-xs text-gray-600 text-center mb-1">
-                          {userRSVP ? `You're ${userRSVP.status}` : 'RSVP:'}
+                      {user && !event.isCalendarRace && (
+                        <div className="flex flex-col gap-1">
+                          <div className="text-xs text-gray-600 text-center mb-1">
+                            {userRSVP ? `You're ${userRSVP.status}` : 'RSVP:'}
+                          </div>
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => handleRSVP(event.id, 'interested')}
+                              className={`px-2 py-1 text-xs rounded ${
+                                userRSVP?.status === 'interested'
+                                  ? 'bg-yellow-500 text-white'
+                                  : 'bg-gray-100 hover:bg-yellow-100'
+                              }`}
+                              title="Interested"
+                            >
+                              🤔
+                            </button>
+                            <button
+                              onClick={() => handleRSVP(event.id, 'registered')}
+                              className={`px-2 py-1 text-xs rounded ${
+                                userRSVP?.status === 'registered'
+                                  ? 'bg-blue-500 text-white'
+                                  : 'bg-gray-100 hover:bg-blue-100'
+                              }`}
+                              title="Registered"
+                            >
+                              ✋
+                            </button>
+                            <button
+                              onClick={() => handleRSVP(event.id, 'confirmed')}
+                              className={`px-2 py-1 text-xs rounded ${
+                                userRSVP?.status === 'confirmed'
+                                  ? 'bg-green-500 text-white'
+                                  : 'bg-gray-100 hover:bg-green-100'
+                              }`}
+                              title="Confirmed"
+                            >
+                              ✅
+                            </button>
+                            <button
+                              onClick={() => handleRSVP(event.id, 'declined')}
+                              className={`px-2 py-1 text-xs rounded ${
+                                userRSVP?.status === 'declined'
+                                  ? 'bg-red-500 text-white'
+                                  : 'bg-gray-100 hover:bg-red-100'
+                              }`}
+                              title="Can't make it"
+                            >
+                              ❌
+                            </button>
+                          </div>
                         </div>
-                        <div className="flex gap-1">
-                          <button
-                            onClick={() => handleRSVP(event.id, 'interested')}
-                            className={`px-2 py-1 text-xs rounded ${
-                              userRSVP?.status === 'interested'
-                                ? 'bg-yellow-500 text-white'
-                                : 'bg-gray-100 hover:bg-yellow-100'
-                            }`}
-                            title="Interested"
-                          >
-                            🤔
-                          </button>
-                          <button
-                            onClick={() => handleRSVP(event.id, 'registered')}
-                            className={`px-2 py-1 text-xs rounded ${
-                              userRSVP?.status === 'registered'
-                                ? 'bg-blue-500 text-white'
-                                : 'bg-gray-100 hover:bg-blue-100'
-                            }`}
-                            title="Registered"
-                          >
-                            ✋
-                          </button>
-                          <button
-                            onClick={() => handleRSVP(event.id, 'confirmed')}
-                            className={`px-2 py-1 text-xs rounded ${
-                              userRSVP?.status === 'confirmed'
-                                ? 'bg-green-500 text-white'
-                                : 'bg-gray-100 hover:bg-green-100'
-                            }`}
-                            title="Confirmed"
-                          >
-                            ✅
-                          </button>
-                          <button
-                            onClick={() => handleRSVP(event.id, 'declined')}
-                            className={`px-2 py-1 text-xs rounded ${
-                              userRSVP?.status === 'declined'
-                                ? 'bg-red-500 text-white'
-                                : 'bg-gray-100 hover:bg-red-100'
-                            }`}
-                            title="Can't make it"
-                          >
-                            ❌
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {user && event.isCalendarRace && (
-                      <div className="text-xs text-gray-500 text-center">
-                        Manage in Calendar
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             )
           })}

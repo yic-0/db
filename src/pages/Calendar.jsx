@@ -3,7 +3,7 @@ import { useAuthStore } from '../store/authStore'
 import { useCalendarStore } from '../store/calendarStore'
 import { usePracticeStore } from '../store/practiceStore'
 import { useEventStore } from '../store/eventStore'
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek, isToday } from 'date-fns'
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek, isToday, parseISO } from 'date-fns'
 import Icon from '../components/Icon'
 import toast from 'react-hot-toast'
 
@@ -28,8 +28,8 @@ export default function Calendar() {
     getUpcomingDeadlines
   } = useCalendarStore()
 
-  const { practices, fetchPractices, createPractice } = usePracticeStore()
-  const { events, fetchEvents } = useEventStore()
+  const { practices, fetchPractices, createPractice, updatePractice } = usePracticeStore()
+  const { events, fetchEvents, updateEvent } = useEventStore()
 
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [activeTab, setActiveTab] = useState('calendar')
@@ -40,6 +40,15 @@ export default function Calendar() {
   const [selectedRace, setSelectedRace] = useState(null)
   const [selectedDate, setSelectedDate] = useState(null)
   const [quickAddType, setQuickAddType] = useState('practice')
+  const [editingEvent, setEditingEvent] = useState(null)
+  const [editForm, setEditForm] = useState({
+    title: '',
+    date: '',
+    start_time: '',
+    end_time: '',
+    location: '',
+    description: ''
+  })
 
   const [quickAddForm, setQuickAddForm] = useState({
     title: '',
@@ -106,6 +115,17 @@ export default function Calendar() {
       fetchCalendarSettings(user.id)
     }
   }, [user?.id])
+
+  // Helper to parse date strings correctly (handles timezone issues)
+  const parseDateString = (dateStr) => {
+    if (!dateStr) return new Date()
+    // If it's a date-only string (YYYY-MM-DD), use parseISO to parse in local timezone
+    if (typeof dateStr === 'string' && dateStr.length === 10) {
+      return parseISO(dateStr)
+    }
+    // Otherwise parse as-is (datetime strings or Date objects)
+    return new Date(dateStr)
+  }
 
   // Generate calendar days
   const calendarDays = useMemo(() => {
@@ -447,6 +467,127 @@ export default function Calendar() {
     setShowQuickAddModal(true)
   }
 
+  const handleStartEdit = (event) => {
+    setEditingEvent(event)
+    const data = event.data || {}
+
+    // Map event data to edit form based on event type
+    if (event.type === 'practice') {
+      setEditForm({
+        title: data.title || '',
+        date: data.date || '',
+        start_time: data.start_time || '',
+        end_time: data.end_time || '',
+        location: data.location || '',
+        description: data.description || ''
+      })
+    } else if (event.type === 'prospective_race' || event.type === 'confirmed_race') {
+      setEditForm({
+        title: data.name || '',
+        date: data.race_date || '',
+        start_time: data.race_start_time || '',
+        end_time: data.race_end_time || '',
+        location: data.location || '',
+        description: data.description || ''
+      })
+    } else if (event.type === 'team_event') {
+      setEditForm({
+        title: data.title || '',
+        date: data.event_date || '',
+        start_time: data.start_time || '',
+        end_time: data.end_time || '',
+        location: data.location || '',
+        description: data.description || ''
+      })
+    }
+  }
+
+  const handleSaveEdit = async () => {
+    if (!editingEvent) return
+
+    const eventType = editingEvent.type
+    const eventId = editingEvent.data?.id
+
+    if (!eventId) {
+      toast.error('Cannot update event: missing ID')
+      return
+    }
+
+    let result = { success: false }
+
+    if (eventType === 'practice') {
+      result = await updatePractice(eventId, {
+        title: editForm.title,
+        date: editForm.date,
+        start_time: editForm.start_time || null,
+        end_time: editForm.end_time || null,
+        location: editForm.location || null,
+        description: editForm.description || null
+      })
+    } else if (eventType === 'prospective_race') {
+      // Update prospective race - need to use the calendar store
+      const { updateProspectiveRace } = useCalendarStore.getState()
+      if (updateProspectiveRace) {
+        result = await updateProspectiveRace(eventId, {
+          name: editForm.title,
+          race_date: editForm.date,
+          location: editForm.location || null,
+          description: editForm.description || null
+        })
+      }
+    } else if (eventType === 'confirmed_race') {
+      // Update confirmed race - need to use the calendar store
+      const { updateConfirmedRace } = useCalendarStore.getState()
+      if (updateConfirmedRace) {
+        result = await updateConfirmedRace(eventId, {
+          name: editForm.title,
+          race_date: editForm.date,
+          race_start_time: editForm.start_time || null,
+          race_end_time: editForm.end_time || null,
+          location: editForm.location || null,
+          description: editForm.description || null
+        })
+      }
+    } else if (eventType === 'team_event') {
+      result = await updateEvent(eventId, {
+        title: editForm.title,
+        event_date: editForm.date,
+        start_time: editForm.start_time || null,
+        end_time: editForm.end_time || null,
+        location: editForm.location || null,
+        description: editForm.description || null
+      })
+    }
+
+    if (result.success) {
+      setEditingEvent(null)
+      // Refresh the calendar
+      fetchPractices()
+      fetchProspectiveRaces()
+      fetchConfirmedRaces()
+      fetchEvents()
+    }
+  }
+
+  const handleCancelEdit = () => {
+    setEditingEvent(null)
+  }
+
+  const getAdvancedEditUrl = (event) => {
+    if (!event?.data?.id) return null
+
+    switch (event.type) {
+      case 'practice':
+        return `/practices?edit=${event.data.id}`
+      case 'team_event':
+        return `/events/${event.data.id}`
+      case 'confirmed_race':
+        return `/calendar?tab=confirmed&race=${event.data.id}`
+      default:
+        return null
+    }
+  }
+
   const upcomingDeadlines = getUpcomingDeadlines().slice(0, 10)
 
   return (
@@ -609,47 +750,201 @@ export default function Calendar() {
         </div>
       )}
 
-      {/* Selected Date Events */}
+      {/* Selected Date Events Popup Modal */}
       {selectedDate && (
-        <div className="card">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="font-semibold text-gray-900">
-              Events on {format(selectedDate, 'MMMM d, yyyy')}
-            </h3>
-            <div className="flex items-center gap-2">
-              {isCoachOrAdmin && (
-                <button
-                  onClick={() => openQuickAddModal(selectedDate)}
-                  className="btn btn-primary text-sm flex items-center gap-1"
-                >
-                  <Icon name="plus" size={16} />
-                  Add Event
-                </button>
-              )}
-              <button
-                onClick={() => setSelectedDate(null)}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                <Icon name="close" size={20} />
-              </button>
-            </div>
-          </div>
-          <div className="space-y-3">
-            {getEventsForDay(selectedDate).length === 0 ? (
-              <p className="text-gray-500 text-sm">No events on this day</p>
-            ) : (
-              getEventsForDay(selectedDate).map(event => (
-                <div key={event.id} className="p-3 bg-gray-50 rounded border">
-                  <div className="flex items-center gap-2">
-                    <span className={`w-3 h-3 rounded ${event.color}`}></span>
-                    <span className="font-medium text-gray-900">{event.title}</span>
-                  </div>
-                  <div className="text-sm text-gray-600 mt-1">
-                    Type: {event.type.replace('_', ' ')}
-                  </div>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                  <Icon name="calendar" size={24} className="text-primary-600" />
+                  {format(selectedDate, 'MMMM d, yyyy')}
+                </h2>
+                <div className="flex items-center gap-2">
+                  {isCoachOrAdmin && !editingEvent && (
+                    <button
+                      onClick={() => openQuickAddModal(selectedDate)}
+                      className="btn btn-primary text-sm flex items-center gap-1"
+                    >
+                      <Icon name="plus" size={16} />
+                      Add Event
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      setSelectedDate(null)
+                      setEditingEvent(null)
+                    }}
+                    className="p-2 hover:bg-gray-100 rounded-lg"
+                  >
+                    <Icon name="close" size={20} className="text-gray-500" />
+                  </button>
                 </div>
-              ))
-            )}
+              </div>
+
+              <div className="space-y-4">
+                {getEventsForDay(selectedDate).length === 0 ? (
+                  <div className="text-center py-8">
+                    <p className="text-gray-500">No events scheduled for this day</p>
+                    {isCoachOrAdmin && (
+                      <button
+                        onClick={() => openQuickAddModal(selectedDate)}
+                        className="btn btn-secondary text-sm mt-4"
+                      >
+                        + Add an event
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  getEventsForDay(selectedDate).map(event => (
+                    <div key={event.id} className="p-4 bg-gray-50 rounded-xl border border-gray-200 hover:border-primary-200 transition-colors">
+                      {editingEvent?.id === event.id ? (
+                        // Edit Form
+                        <div className="space-y-4">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className={`w-4 h-4 rounded-full ${event.color}`}></span>
+                            <span className="text-sm font-medium text-gray-600">Editing {event.type.replace(/_/g, ' ')}</span>
+                          </div>
+
+                          <div>
+                            <label className="label">Title/Name *</label>
+                            <input
+                              type="text"
+                              value={editForm.title}
+                              onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                              className="input"
+                              required
+                            />
+                          </div>
+
+                          <div>
+                            <label className="label">Date *</label>
+                            <input
+                              type="date"
+                              value={editForm.date}
+                              onChange={(e) => setEditForm({ ...editForm, date: e.target.value })}
+                              className="input"
+                              required
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <label className="label">Start Time</label>
+                              <input
+                                type="time"
+                                value={editForm.start_time}
+                                onChange={(e) => setEditForm({ ...editForm, start_time: e.target.value })}
+                                className="input"
+                              />
+                            </div>
+                            <div>
+                              <label className="label">End Time</label>
+                              <input
+                                type="time"
+                                value={editForm.end_time}
+                                onChange={(e) => setEditForm({ ...editForm, end_time: e.target.value })}
+                                className="input"
+                              />
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="label">Location</label>
+                            <input
+                              type="text"
+                              value={editForm.location}
+                              onChange={(e) => setEditForm({ ...editForm, location: e.target.value })}
+                              className="input"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="label">Description</label>
+                            <textarea
+                              value={editForm.description}
+                              onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                              className="input"
+                              rows={3}
+                            />
+                          </div>
+
+                          <div className="flex justify-between items-center pt-2">
+                            <div>
+                              {getAdvancedEditUrl(event) && (
+                                <button
+                                  onClick={() => {
+                                    window.location.href = getAdvancedEditUrl(event)
+                                  }}
+                                  className="btn btn-secondary text-xs"
+                                >
+                                  Advanced Options (Fees, RSVPs, etc.)
+                                </button>
+                              )}
+                            </div>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={handleCancelEdit}
+                                className="btn btn-secondary text-sm"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                onClick={handleSaveEdit}
+                                className="btn btn-primary text-sm"
+                              >
+                                Save Changes
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        // Display View
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className={`w-4 h-4 rounded-full ${event.color}`}></span>
+                              <span className="text-lg font-semibold text-gray-900">{event.title}</span>
+                            </div>
+                            <div className="space-y-1 ml-6">
+                              <div className="text-sm text-gray-600">
+                                <span className="font-medium">Type:</span> {event.type.replace(/_/g, ' ')}
+                              </div>
+                              {(event.data?.start_time || event.data?.race_start_time) && (
+                                <div className="text-sm text-gray-600">
+                                  <span className="font-medium">Time:</span> {event.data.start_time || event.data.race_start_time}
+                                  {(event.data.end_time || event.data.race_end_time) && ` - ${event.data.end_time || event.data.race_end_time}`}
+                                </div>
+                              )}
+                              {event.data?.location && (
+                                <div className="text-sm text-gray-600">
+                                  <span className="font-medium">Location:</span> {event.data.location}
+                                </div>
+                              )}
+                              {event.data?.description && (
+                                <div className="text-sm text-gray-600 mt-2">
+                                  <span className="font-medium">Description:</span>
+                                  <p className="mt-1">{event.data.description}</p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          {isCoachOrAdmin && (
+                            <button
+                              onClick={() => handleStartEdit(event)}
+                              className="btn btn-secondary text-xs flex items-center gap-1"
+                            >
+                              <Icon name="manage" size={14} />
+                              Edit
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -683,7 +978,7 @@ export default function Calendar() {
                     <h3 className="text-lg font-semibold text-gray-900">{race.name}</h3>
                     <p className="text-sm text-gray-600">{race.location}</p>
                     <p className="text-sm text-gray-500 mt-1">
-                      Race Date: {format(new Date(race.race_date), 'MMMM d, yyyy')}
+                      Race Date: {format(parseDateString(race.race_date), 'MMMM d, yyyy')}
                     </p>
                   </div>
                   <div className="flex gap-2">
@@ -711,7 +1006,7 @@ export default function Calendar() {
                     <div className="p-2 bg-orange-50 rounded">
                       <div className="text-xs font-medium text-orange-800">Early Bird Deadline</div>
                       <div className="text-sm text-orange-900">
-                        {format(new Date(race.early_bird_deadline), 'MMM d, yyyy')}
+                        {format(parseDateString(race.early_bird_deadline), 'MMM d, yyyy')}
                       </div>
                       {race.early_bird_cost && (
                         <div className="text-xs text-orange-700">
@@ -724,7 +1019,7 @@ export default function Calendar() {
                     <div className="p-2 bg-blue-50 rounded">
                       <div className="text-xs font-medium text-blue-800">Registration Deadline</div>
                       <div className="text-sm text-blue-900">
-                        {format(new Date(race.registration_deadline), 'MMM d, yyyy')}
+                        {format(parseDateString(race.registration_deadline), 'MMM d, yyyy')}
                       </div>
                     </div>
                   )}
@@ -732,7 +1027,7 @@ export default function Calendar() {
                     <div className="p-2 bg-red-50 rounded">
                       <div className="text-xs font-medium text-red-800">Payment Deadline</div>
                       <div className="text-sm text-red-900">
-                        {format(new Date(race.payment_deadline), 'MMM d, yyyy')}
+                        {format(parseDateString(race.payment_deadline), 'MMM d, yyyy')}
                       </div>
                       {race.estimated_cost && (
                         <div className="text-xs text-red-700">
@@ -801,7 +1096,7 @@ export default function Calendar() {
                         <p className="text-xs text-gray-500">{race.venue_address}</p>
                       )}
                       <p className="text-sm text-gray-500 mt-1">
-                        Race Date: {format(new Date(race.race_date), 'MMMM d, yyyy')}
+                        Race Date: {format(parseDateString(race.race_date), 'MMMM d, yyyy')}
                         {race.race_start_time && ` at ${race.race_start_time}`}
                       </p>
                     </div>
@@ -862,7 +1157,7 @@ export default function Calendar() {
                       <div className="p-2 bg-red-50 rounded">
                         <div className="text-xs font-medium text-red-800">Payment Due</div>
                         <div className="text-sm text-red-900">
-                          {format(new Date(race.payment_due_date), 'MMM d, yyyy')}
+                          {format(parseDateString(race.payment_due_date), 'MMM d, yyyy')}
                         </div>
                         {race.per_person_cost && (
                           <div className="text-xs text-red-700">

@@ -155,6 +155,13 @@ const icons = {
       <path d="M12 2v3" />
     </svg>
   ),
+  click: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 9l10 10m0-10L9 19" />
+      <path d="M15 15l4 4" />
+      <path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z" />
+    </svg>
+  ),
 }
 
 export default function Icon({ name, size = 20, className = '' }) {
