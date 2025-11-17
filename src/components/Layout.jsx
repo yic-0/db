@@ -19,6 +19,7 @@ export default function Layout() {
     { to: '/roster', label: 'Roster', icon: 'roster' },
     { to: '/lineups', label: 'Lineups', icon: 'lineups' },
     { to: '/announcements', label: 'News', icon: 'announcements' },
+    { to: '/cog-demo', label: 'COG Demo', icon: 'boat' },
   ]
 
   return (

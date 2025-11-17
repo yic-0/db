@@ -14,6 +14,7 @@ import Events from './pages/Events'
 import EventDetail from './pages/EventDetail'
 import Workouts from './pages/Workouts'
 import Calendar from './pages/Calendar'
+import CogDemoPage from './pages/CogDemoPage'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuthStore()
@@ -57,6 +58,7 @@ function App() {
             <Route path="events/:eventId" element={<EventDetail />} />
             <Route path="workouts" element={<Workouts />} />
             <Route path="calendar" element={<Calendar />} />
+            <Route path="cog-demo" element={<CogDemoPage />} />
             <Route path="announcements" element={<Announcements />} />
             <Route path="profile" element={<Profile />} />
           </Route>
