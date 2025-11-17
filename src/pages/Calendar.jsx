@@ -631,73 +631,71 @@ export default function Calendar() {
       {/* Calendar Visibility Toggles */}
       {activeTab === 'calendar' && calendarSettings && (
         <div className="card">
-          <h3 className="font-medium text-gray-900 mb-3">Show on Calendar</h3>
-          <div className="flex flex-wrap gap-4">
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={calendarSettings.show_practices}
-                onChange={() => handleToggleSetting('show_practices')}
-                className="rounded border-gray-300"
-              />
-              <span className="text-sm text-gray-700">Practices</span>
-            </label>
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={calendarSettings.show_confirmed_races}
-                onChange={() => handleToggleSetting('show_confirmed_races')}
-                className="rounded border-gray-300"
-              />
-              <span className="text-sm text-gray-700">Confirmed Races</span>
-            </label>
+          <h3 className="font-medium text-gray-900 mb-2">Show on Calendar</h3>
+          <p className="text-xs text-gray-500 mb-3">Tap a legend chip to toggle visibility.</p>
+          <div className="flex flex-wrap gap-3 text-xs text-gray-700">
+            <button
+              type="button"
+              onClick={() => handleToggleSetting('show_practices')}
+              className={`inline-flex items-center gap-2 px-3 py-2 rounded-full border transition ${
+                calendarSettings.show_practices
+                  ? 'bg-blue-50 border-blue-300 text-blue-800'
+                  : 'bg-white border-gray-200 text-gray-500'
+              }`}
+            >
+              <span className="w-3 h-3 bg-blue-500 rounded-sm"></span>
+              Practice
+            </button>
+            <button
+              type="button"
+              onClick={() => handleToggleSetting('show_confirmed_races')}
+              className={`inline-flex items-center gap-2 px-3 py-2 rounded-full border transition ${
+                calendarSettings.show_confirmed_races
+                  ? 'bg-green-50 border-green-300 text-green-800'
+                  : 'bg-white border-gray-200 text-gray-500'
+              }`}
+            >
+              <span className="w-3 h-3 bg-green-500 rounded-sm"></span>
+              Confirmed race
+            </button>
             {isCoachOrAdmin && (
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={calendarSettings.show_prospective_races}
-                  onChange={() => handleToggleSetting('show_prospective_races')}
-                  className="rounded border-gray-300"
-                />
-                <span className="text-sm text-gray-700">Prospective Races</span>
-              </label>
+              <button
+                type="button"
+                onClick={() => handleToggleSetting('show_prospective_races')}
+                className={`inline-flex items-center gap-2 px-3 py-2 rounded-full border transition ${
+                  calendarSettings.show_prospective_races
+                    ? 'bg-orange-50 border-orange-300 text-orange-800'
+                    : 'bg-white border-gray-200 text-gray-500'
+                }`}
+              >
+                <span className="w-3 h-3 bg-orange-500 rounded-sm"></span>
+                Prospective race
+              </button>
             )}
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={calendarSettings.show_deadlines}
-                onChange={() => handleToggleSetting('show_deadlines')}
-                className="rounded border-gray-300"
-              />
-              <span className="text-sm text-gray-700">Deadlines</span>
-            </label>
-          </div>
-          <div className="mt-3">
-            <p className="text-xs font-semibold text-gray-700 mb-2">Legend</p>
-            <div className="flex flex-wrap gap-3 text-xs text-gray-600">
-              <span className="inline-flex items-center gap-2 px-2 py-1 rounded-full bg-blue-50 border border-blue-200">
-                <span className="w-3 h-3 bg-blue-500 rounded-sm"></span>
-                Practice
-              </span>
-              <span className="inline-flex items-center gap-2 px-2 py-1 rounded-full bg-green-50 border border-green-200">
-                <span className="w-3 h-3 bg-green-500 rounded-sm"></span>
-                Confirmed race
-              </span>
-              {isCoachOrAdmin && (
-                <span className="inline-flex items-center gap-2 px-2 py-1 rounded-full bg-orange-50 border border-orange-200">
-                  <span className="w-3 h-3 bg-orange-500 rounded-sm"></span>
-                  Prospective race
-                </span>
-              )}
-              <span className="inline-flex items-center gap-2 px-2 py-1 rounded-full bg-purple-50 border border-purple-200">
-                <span className="w-3 h-3 bg-purple-500 rounded-sm"></span>
-                Team event
-              </span>
-              <span className="inline-flex items-center gap-2 px-2 py-1 rounded-full bg-red-50 border border-red-200">
-                <span className="w-3 h-3 bg-red-500 rounded-sm"></span>
-                Deadlines
-              </span>
-            </div>
+            <button
+              type="button"
+              onClick={() => handleToggleSetting('show_deadlines')}
+              className={`inline-flex items-center gap-2 px-3 py-2 rounded-full border transition ${
+                calendarSettings.show_deadlines
+                  ? 'bg-red-50 border-red-300 text-red-800'
+                  : 'bg-white border-gray-200 text-gray-500'
+              }`}
+            >
+              <span className="w-3 h-3 bg-red-500 rounded-sm"></span>
+              Deadlines
+            </button>
+            <button
+              type="button"
+              onClick={() => handleToggleSetting('show_team_events')}
+              className={`inline-flex items-center gap-2 px-3 py-2 rounded-full border transition ${
+                calendarSettings.show_team_events
+                  ? 'bg-purple-50 border-purple-300 text-purple-800'
+                  : 'bg-white border-gray-200 text-gray-500'
+              }`}
+            >
+              <span className="w-3 h-3 bg-purple-500 rounded-sm"></span>
+              Team event
+            </button>
           </div>
         </div>
       )}
@@ -1814,7 +1812,7 @@ export default function Calendar() {
                     }`}
                   >
                     <Icon name="trophy" size={24} className={quickAddType === 'race' ? 'text-accent-600' : 'text-gray-500'} />
-                    <div className="text-sm font-medium mt-1">Confirmed Race</div>
+                    <div className="text-sm font-medium mt-1">Race</div>
                   </button>
                 </div>
               </div>
