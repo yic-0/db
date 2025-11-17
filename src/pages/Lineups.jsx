@@ -990,36 +990,36 @@ export default function Lineups() {
               <span>Seat heatmap (front to back)</span>
               {balance.hasSecondary && <span className="text-gray-500">Alt rows include secondary</span>}
             </div>
-            <div className="space-y-1 flex items-stretch gap-2">
-              <div className="flex flex-col justify-between">
+            <div className="space-y-1">
+              <div className="flex items-stretch gap-2">
                 <span className="text-[10px] px-2 py-1 rounded-full bg-gray-800 text-white text-center" style={{ writingMode: 'vertical-rl' }}>
                   Drummer
                 </span>
+                <div className="flex-1 space-y-1">
+                  <div className="grid grid-cols-10 gap-1 h-4">
+                    {leftWeights.map((w, idx) => (
+                      <div key={`left-${idx}`} className="relative rounded-full overflow-hidden bg-gray-100 border border-gray-200">
+                        <div
+                          className="absolute inset-0 bg-rose-500"
+                          style={{ opacity: Math.min(1, w / maxSeat) }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-10 gap-1 h-4">
+                    {rightWeights.map((w, idx) => (
+                      <div key={`right-${idx}`} className="relative rounded-full overflow-hidden bg-gray-100 border border-gray-200">
+                        <div
+                          className="absolute inset-0 bg-rose-500"
+                          style={{ opacity: Math.min(1, w / maxSeat) }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
                 <span className="text-[10px] px-2 py-1 rounded-full bg-gray-800 text-white text-center" style={{ writingMode: 'vertical-rl' }}>
                   Steerer
                 </span>
-              </div>
-              <div className="flex-1 space-y-1">
-                <div className="grid grid-cols-10 gap-1 h-4">
-                  {leftWeights.map((w, idx) => (
-                    <div key={`left-${idx}`} className="relative rounded-full overflow-hidden bg-gray-100 border border-gray-200">
-                      <div
-                        className="absolute inset-0 bg-rose-500"
-                        style={{ opacity: Math.min(1, w / maxSeat) }}
-                      />
-                    </div>
-                  ))}
-                </div>
-                <div className="grid grid-cols-10 gap-1 h-4">
-                  {rightWeights.map((w, idx) => (
-                    <div key={`right-${idx}`} className="relative rounded-full overflow-hidden bg-gray-100 border border-gray-200">
-                      <div
-                        className="absolute inset-0 bg-rose-500"
-                        style={{ opacity: Math.min(1, w / maxSeat) }}
-                      />
-                    </div>
-                  ))}
-                </div>
               </div>
             </div>
 
@@ -1046,14 +1046,9 @@ export default function Lineups() {
             {balance.hasSecondary && balance.totalWeightSecondary > 0 && (
               <div className="space-y-1">
                 <div className="flex items-stretch gap-2">
-                  <div className="flex flex-col justify-between">
-                    <span className="text-[10px] px-2 py-1 rounded-full bg-gray-700 text-white text-center" style={{ writingMode: 'vertical-rl' }}>
-                      Drummer
-                    </span>
-                    <span className="text-[10px] px-2 py-1 rounded-full bg-gray-700 text-white text-center" style={{ writingMode: 'vertical-rl' }}>
-                      Steerer
-                    </span>
-                  </div>
+                  <span className="text-[10px] px-2 py-1 rounded-full bg-gray-700 text-white text-center" style={{ writingMode: 'vertical-rl' }}>
+                    Drummer
+                  </span>
                   <div className="flex-1 space-y-1">
                     <div className="grid grid-cols-10 gap-1 h-3">
                       {altLeftWeights.map((w, idx) => (
@@ -1076,6 +1071,9 @@ export default function Lineups() {
                       ))}
                     </div>
                   </div>
+                  <span className="text-[10px] px-2 py-1 rounded-full bg-gray-700 text-white text-center" style={{ writingMode: 'vertical-rl' }}>
+                    Steerer
+                  </span>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2 h-3 mt-1">
