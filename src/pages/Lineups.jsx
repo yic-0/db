@@ -991,8 +991,8 @@ export default function Lineups() {
               {balance.hasSecondary && <span className="text-gray-500">Alt rows include secondary</span>}
             </div>
             <div className="space-y-1">
-              <div className="flex items-stretch gap-2">
-                <span className="text-[10px] px-2 py-1 rounded-full bg-gray-800 text-white text-center" style={{ writingMode: 'vertical-rl' }}>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] px-2 py-1 rounded-full bg-gray-800 text-white flex items-center justify-center" style={{ writingMode: 'vertical-rl' }}>
                   Drummer
                 </span>
                 <div className="flex-1 space-y-1">
@@ -1017,7 +1017,7 @@ export default function Lineups() {
                     ))}
                   </div>
                 </div>
-                <span className="text-[10px] px-2 py-1 rounded-full bg-gray-800 text-white text-center" style={{ writingMode: 'vertical-rl' }}>
+                <span className="text-[10px] px-2 py-1 rounded-full bg-gray-800 text-white flex items-center justify-center" style={{ writingMode: 'vertical-rl' }}>
                   Steerer
                 </span>
               </div>
@@ -1045,8 +1045,8 @@ export default function Lineups() {
 
             {balance.hasSecondary && balance.totalWeightSecondary > 0 && (
               <div className="space-y-1">
-                <div className="flex items-stretch gap-2">
-                  <span className="text-[10px] px-2 py-1 rounded-full bg-gray-700 text-white text-center" style={{ writingMode: 'vertical-rl' }}>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] px-2 py-1 rounded-full bg-gray-700 text-white flex items-center justify-center" style={{ writingMode: 'vertical-rl' }}>
                     Drummer
                   </span>
                   <div className="flex-1 space-y-1">
@@ -1071,7 +1071,7 @@ export default function Lineups() {
                       ))}
                     </div>
                   </div>
-                  <span className="text-[10px] px-2 py-1 rounded-full bg-gray-700 text-white text-center" style={{ writingMode: 'vertical-rl' }}>
+                  <span className="text-[10px] px-2 py-1 rounded-full bg-gray-700 text-white flex items-center justify-center" style={{ writingMode: 'vertical-rl' }}>
                     Steerer
                   </span>
                 </div>
