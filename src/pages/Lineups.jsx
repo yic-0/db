@@ -1083,7 +1083,7 @@ export default function Lineups() {
         <div className="mt-4 p-3 bg-white rounded-lg border border-blue-200">
           <p className="text-xs text-gray-600">
             <span className="font-semibold">💡 Tip:</span> Aim for less than 3% difference for excellent balance.
-            Front and back act like a seesaw pivot—weight at the ends has outsized impact, so place heavier paddlers thoughtfully there.
+            Front and back act like a seesaw pivot—weight at the ends has outsized impact.
           </p>
         </div>
       </div>
