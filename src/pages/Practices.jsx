@@ -223,7 +223,7 @@ export default function Practices() {
 
       {/* Privacy Settings - Admin Only */}
       {hasRole('admin') && (
-        <div className="card mb-6 bg-gray-50">
+        <div className="card mb-6">
           <h3 className="font-semibold text-gray-900 mb-3">Privacy Settings (Admin Only)</h3>
           <p className="text-xs text-gray-600 mb-3">These settings affect what all users see</p>
           <div className="flex gap-6">

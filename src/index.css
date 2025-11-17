@@ -53,7 +53,7 @@ body::before {
   }
 
   .btn-secondary {
-    @apply bg-white text-gray-700 border border-gray-200 hover:bg-gray-50 hover:border-gray-300;
+    @apply bg-white/95 text-gray-700 border border-white/70 hover:bg-gray-50 hover:border-primary-100 shadow-sm;
   }
 
   .btn-danger {
@@ -85,7 +85,7 @@ body::before {
   }
 
   .input {
-    @apply w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 bg-white text-gray-900 transition-all duration-200 placeholder:text-gray-400;
+    @apply w-full px-4 py-3 border border-white/70 rounded-xl shadow-inner focus:outline-none focus:ring-2 focus:ring-primary-400/25 focus:border-primary-400 bg-white/95 text-gray-900 transition-all duration-200 placeholder:text-gray-400;
   }
 
   .label {
