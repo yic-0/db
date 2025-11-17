@@ -714,25 +714,25 @@ export default function EventDetail() {
 
               {/* Quick Stats */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="card bg-yellow-50">
+                <div className="card">
                   <div className="text-2xl mb-1">🤔</div>
                   <div className="text-2xl font-bold text-yellow-600">{rsvpCounts.interested}</div>
                   <div className="text-sm text-gray-600">Interested</div>
                 </div>
 
-                <div className="card bg-blue-50">
+                <div className="card">
                   <div className="text-2xl mb-1">✋</div>
                   <div className="text-2xl font-bold text-blue-600">{rsvpCounts.registered}</div>
                   <div className="text-sm text-gray-600">Registered</div>
                 </div>
 
-                <div className="card bg-green-50">
+                <div className="card">
                   <div className="text-2xl mb-1">✅</div>
                   <div className="text-2xl font-bold text-green-600">{rsvpCounts.confirmed}</div>
                   <div className="text-sm text-gray-600">Confirmed</div>
                 </div>
 
-                <div className="card bg-purple-50">
+                <div className="card">
                   <div className="text-2xl mb-1">🚗</div>
                   <div className="text-2xl font-bold text-purple-600">{eventCarpools.length}</div>
                   <div className="text-sm text-gray-600">Carpools</div>
@@ -805,7 +805,7 @@ export default function EventDetail() {
           </div>
 
           {showCarpoolForm && (
-            <div className="card bg-blue-50">
+            <div className="card">
               <h3 className="font-semibold text-gray-900 mb-4">Offer a Carpool</h3>
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
@@ -1009,7 +1009,7 @@ export default function EventDetail() {
           )}
 
           {showExpenseForm && (
-            <div className="card bg-blue-50">
+            <div className="card">
               <h3 className="font-semibold text-gray-900 mb-4">Add Expense</h3>
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
@@ -1208,7 +1208,7 @@ export default function EventDetail() {
           )}
 
           {showRaceForm && (
-            <div className="card bg-blue-50">
+            <div className="card">
               <h3 className="font-semibold text-gray-900 mb-4">Add Race</h3>
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
@@ -1355,7 +1355,7 @@ export default function EventDetail() {
           )}
 
           {showTaskForm && (
-            <div className="card bg-blue-50">
+            <div className="card">
               <h3 className="font-semibold text-gray-900 mb-4">Add Task</h3>
               <div className="space-y-4">
                 <div>
@@ -1527,3 +1527,4 @@ export default function EventDetail() {
     </div>
   )
 }
+
