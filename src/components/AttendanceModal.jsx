@@ -129,8 +129,8 @@ export default function AttendanceModal({ isOpen, onClose, practice }) {
   const rsvpYesCount = membersWithStatus.filter(m => m.rsvpStatus === 'yes').length
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
+      <div className="bg-white/95 rounded-2xl shadow-2xl border border-white/70 backdrop-blur max-w-4xl w-full max-h-[90vh] overflow-y-auto">
         <div className="p-6">
           {/* Header */}
           <div className="flex justify-between items-center mb-6">
@@ -316,3 +316,4 @@ export default function AttendanceModal({ isOpen, onClose, practice }) {
     </div>
   )
 }
+
