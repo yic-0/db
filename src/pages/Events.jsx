@@ -351,7 +351,7 @@ export default function Events() {
             <div className="inline-flex gap-2">
               <button
                 onClick={() => setFilter('upcoming')}
-                className={`px-3 py-1 rounded text-sm ${
+                className={`px-3 py-1 rounded-full text-sm ${
                   filter === 'upcoming'
                     ? 'bg-primary-600 text-white'
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -382,16 +382,16 @@ export default function Events() {
             </div>
           </div>
 
-          <div>
-            <label className="text-sm font-medium text-gray-700 mr-2">Type:</label>
-            <select
-              value={eventTypeFilter}
-              onChange={(e) => setEventTypeFilter(e.target.value)}
-              className="input py-1"
-            >
-              <option value="all">All Types</option>
-              <option value="race">Races</option>
-              <option value="regatta">Regattas</option>
+            <div>
+              <label className="text-sm font-medium text-gray-700 mr-2">Type:</label>
+              <select
+                value={eventTypeFilter}
+                onChange={(e) => setEventTypeFilter(e.target.value)}
+                className="input py-2"
+              >
+                <option value="all">All Types</option>
+                <option value="race">Races</option>
+                <option value="regatta">Regattas</option>
               <option value="hiking">Hiking</option>
               <option value="social">Social</option>
               <option value="training_camp">Training Camps</option>
@@ -399,32 +399,32 @@ export default function Events() {
             </select>
           </div>
 
-          <div className="flex items-center gap-2">
-            <label className="text-sm font-medium text-gray-700">
-              <input
-                type="checkbox"
-                checked={showCalendarRaces}
-                onChange={(e) => setShowCalendarRaces(e.target.checked)}
-                className="mr-2"
-              />
-              Include Calendar Races
-            </label>
-            {showCalendarRaces && (
-              <div className="flex items-center gap-3">
-                <span className="text-xs text-gray-500">
-                  ({prospectiveRaces.length + confirmedRaces.length} from calendar)
-                </span>
-                <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={mergeCalendarRaces}
-                    onChange={(e) => setMergeCalendarRaces(e.target.checked)}
-                    className="mr-1"
-                  />
-                  Merge prospective + confirmed
-                </label>
-              </div>
-            )}
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={showCalendarRaces}
+                  onChange={(e) => setShowCalendarRaces(e.target.checked)}
+                  className="mr-2 rounded border-gray-300"
+                />
+                Include Calendar Races
+              </label>
+              {showCalendarRaces && (
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-gray-500">
+                    ({prospectiveRaces.length + confirmedRaces.length} from calendar)
+                  </span>
+                  <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={mergeCalendarRaces}
+                      onChange={(e) => setMergeCalendarRaces(e.target.checked)}
+                      className="mr-1 rounded border-gray-300"
+                    />
+                    Merge prospective + confirmed
+                  </label>
+                </div>
+              )}
           </div>
         </div>
       </div>
@@ -435,11 +435,11 @@ export default function Events() {
           <p className="text-gray-600">Loading events...</p>
         </div>
       ) : filteredEvents.length === 0 ? (
-        <div className="card text-center py-12">
-          <p className="text-gray-600">No events found</p>
-          {(hasRole('admin') || hasRole('coach')) && (
-            <button
-              onClick={() => setIsCreateModalOpen(true)}
+            <div className="card text-center py-12">
+              <p className="text-gray-600">No events found</p>
+              {(hasRole('admin') || hasRole('coach')) && (
+                <button
+                  onClick={() => setIsCreateModalOpen(true)}
               className="btn btn-primary mt-4"
             >
               Create First Event
