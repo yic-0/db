@@ -244,19 +244,19 @@ export default function PracticePrep() {
 
       {/* Stats Dashboard */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <div className="card bg-green-50">
+        <div className="card">
           <h3 className="text-sm font-medium text-gray-600 mb-1">Attended</h3>
           <p className="text-3xl font-bold text-green-600">{attendedMembers.length}</p>
         </div>
-        <div className="card bg-blue-50">
+        <div className="card">
           <h3 className="text-sm font-medium text-gray-600 mb-1">RSVP'd Yes</h3>
           <p className="text-3xl font-bold text-blue-600">{rsvpdYes.length}</p>
         </div>
-        <div className="card bg-yellow-50">
+        <div className="card">
           <h3 className="text-sm font-medium text-gray-600 mb-1">Maybe</h3>
           <p className="text-3xl font-bold text-yellow-600">{rsvpdMaybe.length}</p>
         </div>
-        <div className="card bg-purple-50">
+        <div className="card">
           <h3 className="text-sm font-medium text-gray-600 mb-1">Capacity</h3>
           <p className="text-3xl font-bold text-purple-600">
             {attendedMembers.length}/{selectedPractice.max_capacity}
