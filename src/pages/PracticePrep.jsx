@@ -7,6 +7,7 @@ import { format } from 'date-fns'
 import toast from 'react-hot-toast'
 import PracticeLineupsManager from '../components/PracticeLineupsManager'
 import MemberHistoryModal from '../components/MemberHistoryModal'
+import Icon from '../components/Icon'
 
 export default function PracticePrep() {
   const navigate = useNavigate()
@@ -348,7 +349,10 @@ export default function PracticePrep() {
                             className="text-blue-600 hover:text-blue-700 text-xs underline"
                             title="View previous notes"
                           >
-                            📋 History
+                            <span className="inline-flex items-center gap-1">
+                              <Icon name="announcements" size={14} className="text-blue-600" />
+                              History
+                            </span>
                           </button>
                           <span className={`px-2 py-1 text-xs rounded ${badge.color}`}>
                             {badge.label}

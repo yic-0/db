@@ -23,6 +23,7 @@ export default function Events() {
   const [eventTypeFilter, setEventTypeFilter] = useState('all')
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [showCalendarRaces, setShowCalendarRaces] = useState(true)
+  const [mergeCalendarRaces, setMergeCalendarRaces] = useState(true)
   const [editingEventId, setEditingEventId] = useState(null)
   const [editForm, setEditForm] = useState({
     title: '',
@@ -213,14 +214,20 @@ export default function Events() {
   }
 
   const getEventTypeIcon = (type) => {
-    switch (type) {
-      case 'race': return '🚤'
-      case 'regatta': return '🏆'
-      case 'hiking': return '🥾'
-      case 'social': return '🎉'
-      case 'training_camp': return '💪'
-      default: return '📅'
+    const map = {
+      race: { name: 'boat', color: 'text-primary-600 bg-primary-50' },
+      regatta: { name: 'trophy', color: 'text-amber-600 bg-amber-50' },
+      hiking: { name: 'practice', color: 'text-emerald-600 bg-emerald-50' },
+      social: { name: 'announcements', color: 'text-pink-600 bg-pink-50' },
+      training_camp: { name: 'workouts', color: 'text-indigo-600 bg-indigo-50' },
+      default: { name: 'calendar', color: 'text-gray-600 bg-gray-50' }
     }
+    const icon = map[type] || map.default
+    return (
+      <span className={`inline-flex items-center justify-center w-10 h-10 rounded-2xl ${icon.color}`}>
+        <Icon name={icon.name} size={20} />
+      </span>
+    )
   }
 
   const getUserRSVP = (eventId) => {
@@ -239,7 +246,7 @@ export default function Events() {
   }
 
   // Convert calendar races to event-like format
-  const calendarRacesAsEvents = showCalendarRaces ? [
+  const calendarRacesAsEvents = showCalendarRaces && mergeCalendarRaces ? [
     ...prospectiveRaces
       .filter(race => race.status === 'prospective')
       .map(race => ({
@@ -403,9 +410,20 @@ export default function Events() {
               Include Calendar Races
             </label>
             {showCalendarRaces && (
-              <span className="text-xs text-gray-500">
-                ({prospectiveRaces.length + confirmedRaces.length} from calendar)
-              </span>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-gray-500">
+                  ({prospectiveRaces.length + confirmedRaces.length} from calendar)
+                </span>
+                <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={mergeCalendarRaces}
+                    onChange={(e) => setMergeCalendarRaces(e.target.checked)}
+                    className="mr-1"
+                  />
+                  Merge prospective + confirmed
+                </label>
+              </div>
             )}
           </div>
         </div>
@@ -447,7 +465,8 @@ export default function Events() {
                         <span className="text-lg font-semibold text-gray-900">Editing Event</span>
                         {event.isCalendarRace && (
                           <span className="px-2 py-1 text-xs rounded bg-indigo-100 text-indigo-700">
-                            📅 Calendar Race
+                            <Icon name="calendar" size={14} className="inline text-indigo-700 mr-1" />
+                            Calendar Race
                           </span>
                         )}
                       </div>
@@ -567,7 +586,8 @@ export default function Events() {
                             </span>
                             {event.isCalendarRace && (
                               <span className="px-2 py-1 text-xs rounded bg-indigo-100 text-indigo-700">
-                                📅 From Calendar
+                                <Icon name="calendar" size={14} className="inline text-indigo-700 mr-1" />
+                                From Calendar
                               </span>
                             )}
                           </div>
@@ -577,7 +597,7 @@ export default function Events() {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 text-sm">
                         <div>
                           <div className="flex items-start gap-2 mb-2">
-                            <span className="text-gray-600">📅</span>
+                            <Icon name="calendar" size={16} className="text-gray-600" />
                             <div>
                               <div className="font-medium text-gray-900">{formatDate(event.event_date)}</div>
                               {event.start_time && (
@@ -590,7 +610,7 @@ export default function Events() {
                           </div>
                           {event.location && (
                             <div className="flex items-start gap-2 mb-2">
-                              <span className="text-gray-600">📍</span>
+                              <Icon name="location" size={16} className="text-gray-600" />
                               <div className="text-gray-700">{event.location}</div>
                             </div>
                           )}
@@ -710,6 +730,71 @@ export default function Events() {
               </div>
             )
           })}
+        </div>
+      )}
+
+      {/* Calendar races shown separately when not merged */}
+      {showCalendarRaces && !mergeCalendarRaces && (
+        <div className="card mt-6">
+          <div className="flex justify-between items-center mb-4">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">Calendar Races</h3>
+              <p className="text-sm text-gray-600">Prospective and confirmed races from the team calendar</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <span className="w-2 h-2 rounded-full bg-orange-500" />
+                <h4 className="text-sm font-semibold text-gray-900">Prospective Races</h4>
+              </div>
+              <div className="space-y-2">
+                {prospectiveRaces.filter(r => r.status === 'prospective').length === 0 ? (
+                  <p className="text-xs text-gray-500">None</p>
+                ) : (
+                  prospectiveRaces
+                    .filter(r => r.status === 'prospective')
+                    .sort((a, b) => new Date(a.race_date) - new Date(b.race_date))
+                    .map(race => (
+                      <div key={race.id} className="p-3 bg-gray-50 rounded border border-gray-200">
+                        <div className="flex justify-between items-center">
+                          <div>
+                            <p className="font-medium text-gray-900">{race.name}</p>
+                            <p className="text-xs text-gray-600">{formatDate(race.race_date)}</p>
+                          </div>
+                          <span className="px-2 py-1 text-xs rounded bg-orange-100 text-orange-700">Prospective</span>
+                        </div>
+                      </div>
+                    ))
+                )}
+              </div>
+            </div>
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <span className="w-2 h-2 rounded-full bg-blue-500" />
+                <h4 className="text-sm font-semibold text-gray-900">Confirmed Races</h4>
+              </div>
+              <div className="space-y-2">
+                {confirmedRaces.length === 0 ? (
+                  <p className="text-xs text-gray-500">None</p>
+                ) : (
+                  confirmedRaces
+                    .sort((a, b) => new Date(a.race_date) - new Date(b.race_date))
+                    .map(race => (
+                      <div key={race.id} className="p-3 bg-gray-50 rounded border border-gray-200">
+                        <div className="flex justify-between items-center">
+                          <div>
+                            <p className="font-medium text-gray-900">{race.name}</p>
+                            <p className="text-xs text-gray-600">{formatDate(race.race_date)}</p>
+                          </div>
+                          <span className="px-2 py-1 text-xs rounded bg-blue-100 text-blue-700">Confirmed</span>
+                        </div>
+                      </div>
+                    ))
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useEventStore } from '../store/eventStore'
 import { useAuthStore } from '../store/authStore'
 import { useRosterStore } from '../store/rosterStore'
+import Icon from '../components/Icon'
 import { format, isPast } from 'date-fns'
 import toast from 'react-hot-toast'
 
@@ -626,7 +627,7 @@ export default function EventDetail() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-3">
                     <div className="flex items-start gap-3">
-                      <span className="text-gray-600 mt-1">📅</span>
+                      <Icon name="calendar" size={18} className="text-gray-600 mt-1" />
                       <div>
                         <div className="font-medium text-gray-900">Date</div>
                         <div className="text-gray-700">{formatDate(event.event_date)}</div>
@@ -648,7 +649,7 @@ export default function EventDetail() {
 
                     {event.location && (
                       <div className="flex items-start gap-3">
-                        <span className="text-gray-600 mt-1">📍</span>
+                        <Icon name="location" size={18} className="text-gray-600 mt-1" />
                         <div>
                           <div className="font-medium text-gray-900">Location</div>
                           <div className="text-gray-700">{event.location}</div>
@@ -1517,7 +1518,8 @@ export default function EventDetail() {
                             )}
                             {task.due_date && (
                               <span className={isDueSoon && !task.completed ? 'text-red-600 font-medium' : ''}>
-                                📅 Due: {format(new Date(task.due_date), 'MMM d')}
+                                <Icon name="calendar" size={14} className="inline text-gray-500 mr-1" />
+                                Due: {format(new Date(task.due_date), 'MMM d')}
                               </span>
                             )}
                             {task.completed && task.completed_by_profile && (

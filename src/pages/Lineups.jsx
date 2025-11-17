@@ -21,7 +21,9 @@ export default function Lineups() {
   const [selectedPracticeId, setSelectedPracticeId] = useState('')
   const [rsvpFilter, setRsvpFilter] = useState('all')
   const [boatRows, setBoatRows] = useState(10) // Number of rows (pairs), default 10
-  const [comparisonMode, setComparisonMode] = useState(false) // Toggle for comparison mode
+  const [unitSystem, setUnitSystem] = useState('metric') // 'metric' | 'imperial'
+  // Always allow secondary placements for quick alternates
+  const comparisonMode = true
 
   // Available members pool
   const [availableMembers, setAvailableMembers] = useState([])
@@ -109,130 +111,120 @@ export default function Lineups() {
   const handleDragEnd = (result) => {
     const { source, destination } = result
 
-    // Dropped outside a droppable area
     if (!destination) return
 
-    // Dropped in the same position
-    if (
-      source.droppableId === destination.droppableId &&
-      source.index === destination.index
-    ) {
-      return
-    }
-
-    // Get the dragged member
     let draggedMember = null
 
+    const parseIndex = (id) => parseInt(id.split('-')[1])
+
+    // Determine dragged member based on source droppable and index (0 = primary, 1 = secondary)
     if (source.droppableId === 'available') {
       draggedMember = availableMembers[source.index]
     } else if (source.droppableId === 'drummer') {
-      draggedMember = boatPositions.drummer
-    } else if (source.droppableId === 'drummer-secondary') {
-      draggedMember = boatPositions.drummer_secondary
+      draggedMember = source.index === 0 ? boatPositions.drummer : boatPositions.drummer_secondary
     } else if (source.droppableId === 'steersperson') {
-      draggedMember = boatPositions.steersperson
-    } else if (source.droppableId === 'steersperson-secondary') {
-      draggedMember = boatPositions.steersperson_secondary
-    } else if (source.droppableId.startsWith('left-') && source.droppableId.includes('-secondary')) {
-      const index = parseInt(source.droppableId.split('-')[1])
-      draggedMember = boatPositions.left_secondary[index]
+      draggedMember = source.index === 0 ? boatPositions.steersperson : boatPositions.steersperson_secondary
     } else if (source.droppableId.startsWith('left-')) {
-      const index = parseInt(source.droppableId.split('-')[1])
-      draggedMember = boatPositions.left[index]
-    } else if (source.droppableId.startsWith('right-') && source.droppableId.includes('-secondary')) {
-      const index = parseInt(source.droppableId.split('-')[1])
-      draggedMember = boatPositions.right_secondary[index]
+      const index = parseIndex(source.droppableId)
+      draggedMember = source.index === 0 ? boatPositions.left[index] : boatPositions.left_secondary[index]
     } else if (source.droppableId.startsWith('right-')) {
-      const index = parseInt(source.droppableId.split('-')[1])
-      draggedMember = boatPositions.right[index]
+      const index = parseIndex(source.droppableId)
+      draggedMember = source.index === 0 ? boatPositions.right[index] : boatPositions.right_secondary[index]
     } else if (source.droppableId.startsWith('alternate-')) {
-      const index = parseInt(source.droppableId.split('-')[1])
+      const index = parseIndex(source.droppableId)
       draggedMember = boatPositions.alternates[index]
     }
 
-    // Create new state objects
+    if (!draggedMember) return
+
     let newBoatPositions = { ...boatPositions }
     let newAvailableMembers = [...availableMembers]
     let displacedMember = null
 
-    // Remove from source
+    // Remove from source slot
     if (source.droppableId === 'available') {
       newAvailableMembers.splice(source.index, 1)
     } else if (source.droppableId === 'drummer') {
-      newBoatPositions.drummer = null
-    } else if (source.droppableId === 'drummer-secondary') {
-      newBoatPositions.drummer_secondary = null
+      if (source.index === 0) newBoatPositions.drummer = null
+      else newBoatPositions.drummer_secondary = null
     } else if (source.droppableId === 'steersperson') {
-      newBoatPositions.steersperson = null
-    } else if (source.droppableId === 'steersperson-secondary') {
-      newBoatPositions.steersperson_secondary = null
-    } else if (source.droppableId.startsWith('left-') && source.droppableId.includes('-secondary')) {
-      const index = parseInt(source.droppableId.split('-')[1])
-      newBoatPositions.left_secondary = [...boatPositions.left_secondary]
-      newBoatPositions.left_secondary[index] = null
+      if (source.index === 0) newBoatPositions.steersperson = null
+      else newBoatPositions.steersperson_secondary = null
     } else if (source.droppableId.startsWith('left-')) {
-      const index = parseInt(source.droppableId.split('-')[1])
-      newBoatPositions.left = [...boatPositions.left]
-      newBoatPositions.left[index] = null
-    } else if (source.droppableId.startsWith('right-') && source.droppableId.includes('-secondary')) {
-      const index = parseInt(source.droppableId.split('-')[1])
-      newBoatPositions.right_secondary = [...boatPositions.right_secondary]
-      newBoatPositions.right_secondary[index] = null
+      const index = parseIndex(source.droppableId)
+      if (source.index === 0) {
+        newBoatPositions.left = [...boatPositions.left]
+        newBoatPositions.left[index] = null
+      } else {
+        newBoatPositions.left_secondary = [...boatPositions.left_secondary]
+        newBoatPositions.left_secondary[index] = null
+      }
     } else if (source.droppableId.startsWith('right-')) {
-      const index = parseInt(source.droppableId.split('-')[1])
-      newBoatPositions.right = [...boatPositions.right]
-      newBoatPositions.right[index] = null
+      const index = parseIndex(source.droppableId)
+      if (source.index === 0) {
+        newBoatPositions.right = [...boatPositions.right]
+        newBoatPositions.right[index] = null
+      } else {
+        newBoatPositions.right_secondary = [...boatPositions.right_secondary]
+        newBoatPositions.right_secondary[index] = null
+      }
     } else if (source.droppableId.startsWith('alternate-')) {
-      const index = parseInt(source.droppableId.split('-')[1])
+      const index = parseIndex(source.droppableId)
       newBoatPositions.alternates = [...boatPositions.alternates]
       newBoatPositions.alternates[index] = null
     }
 
-    // Add to destination (and handle displaced member)
+    // Add to destination - if primary filled, use secondary; if both filled, replace secondary
+    const placeInSeat = (primaryArr, secondaryArr, idx) => {
+      if (!newBoatPositions[primaryArr] || newBoatPositions[primaryArr] === boatPositions[primaryArr]) {
+        newBoatPositions[primaryArr] = [...boatPositions[primaryArr]]
+      }
+      if (!newBoatPositions[secondaryArr] || newBoatPositions[secondaryArr] === boatPositions[secondaryArr]) {
+        newBoatPositions[secondaryArr] = [...boatPositions[secondaryArr]]
+      }
+
+      if (!newBoatPositions[primaryArr][idx]) {
+        newBoatPositions[primaryArr][idx] = draggedMember
+      } else if (!newBoatPositions[secondaryArr][idx]) {
+        newBoatPositions[secondaryArr][idx] = draggedMember
+      } else {
+        displacedMember = newBoatPositions[secondaryArr][idx]
+        newBoatPositions[secondaryArr][idx] = draggedMember
+      }
+    }
+
     if (destination.droppableId === 'available') {
       newAvailableMembers.splice(destination.index, 0, draggedMember)
     } else if (destination.droppableId === 'drummer') {
-      displacedMember = newBoatPositions.drummer
-      newBoatPositions.drummer = draggedMember
-    } else if (destination.droppableId === 'drummer-secondary') {
-      displacedMember = newBoatPositions.drummer_secondary
-      newBoatPositions.drummer_secondary = draggedMember
+      if (!newBoatPositions.drummer) {
+        displacedMember = null
+        newBoatPositions.drummer = draggedMember
+      } else if (!newBoatPositions.drummer_secondary) {
+        displacedMember = null
+        newBoatPositions.drummer_secondary = draggedMember
+      } else {
+        displacedMember = newBoatPositions.drummer_secondary
+        newBoatPositions.drummer_secondary = draggedMember
+      }
     } else if (destination.droppableId === 'steersperson') {
-      displacedMember = newBoatPositions.steersperson
-      newBoatPositions.steersperson = draggedMember
-    } else if (destination.droppableId === 'steersperson-secondary') {
-      displacedMember = newBoatPositions.steersperson_secondary
-      newBoatPositions.steersperson_secondary = draggedMember
-    } else if (destination.droppableId.startsWith('left-') && destination.droppableId.includes('-secondary')) {
-      const index = parseInt(destination.droppableId.split('-')[1])
-      if (!newBoatPositions.left_secondary || newBoatPositions.left_secondary === boatPositions.left_secondary) {
-        newBoatPositions.left_secondary = [...boatPositions.left_secondary]
+      if (!newBoatPositions.steersperson) {
+        displacedMember = null
+        newBoatPositions.steersperson = draggedMember
+      } else if (!newBoatPositions.steersperson_secondary) {
+        displacedMember = null
+        newBoatPositions.steersperson_secondary = draggedMember
+      } else {
+        displacedMember = newBoatPositions.steersperson_secondary
+        newBoatPositions.steersperson_secondary = draggedMember
       }
-      displacedMember = newBoatPositions.left_secondary[index]
-      newBoatPositions.left_secondary[index] = draggedMember
     } else if (destination.droppableId.startsWith('left-')) {
-      const index = parseInt(destination.droppableId.split('-')[1])
-      if (!newBoatPositions.left || newBoatPositions.left === boatPositions.left) {
-        newBoatPositions.left = [...boatPositions.left]
-      }
-      displacedMember = newBoatPositions.left[index]
-      newBoatPositions.left[index] = draggedMember
-    } else if (destination.droppableId.startsWith('right-') && destination.droppableId.includes('-secondary')) {
-      const index = parseInt(destination.droppableId.split('-')[1])
-      if (!newBoatPositions.right_secondary || newBoatPositions.right_secondary === boatPositions.right_secondary) {
-        newBoatPositions.right_secondary = [...boatPositions.right_secondary]
-      }
-      displacedMember = newBoatPositions.right_secondary[index]
-      newBoatPositions.right_secondary[index] = draggedMember
+      const index = parseIndex(destination.droppableId)
+      placeInSeat('left', 'left_secondary', index)
     } else if (destination.droppableId.startsWith('right-')) {
-      const index = parseInt(destination.droppableId.split('-')[1])
-      if (!newBoatPositions.right || newBoatPositions.right === boatPositions.right) {
-        newBoatPositions.right = [...boatPositions.right]
-      }
-      displacedMember = newBoatPositions.right[index]
-      newBoatPositions.right[index] = draggedMember
+      const index = parseIndex(destination.droppableId)
+      placeInSeat('right', 'right_secondary', index)
     } else if (destination.droppableId.startsWith('alternate-')) {
-      const index = parseInt(destination.droppableId.split('-')[1])
+      const index = parseIndex(destination.droppableId)
       if (!newBoatPositions.alternates || newBoatPositions.alternates === boatPositions.alternates) {
         newBoatPositions.alternates = [...boatPositions.alternates]
       }
@@ -240,12 +232,10 @@ export default function Lineups() {
       newBoatPositions.alternates[index] = draggedMember
     }
 
-    // Add displaced member to available if exists
     if (displacedMember) {
       newAvailableMembers.push(displacedMember)
     }
 
-    // Update state once with all changes
     setBoatPositions(newBoatPositions)
     setAvailableMembers(newAvailableMembers)
   }
@@ -427,7 +417,6 @@ export default function Lineups() {
     setEditingLineupId(null)
     setLineupName('')
     setLineupNotes('')
-    setComparisonMode(false)
     toast.success('Lineup cleared')
   }
 
@@ -556,6 +545,32 @@ export default function Lineups() {
 
   const balance = calculateBalance()
 
+  const frontRatio = balance.totalWeight > 0 ? balance.frontTotal / balance.totalWeight : 0.5
+  const altFrontRatio = balance.totalWeightSecondary > 0
+    ? balance.frontTotalSecondary / balance.totalWeightSecondary
+    : frontRatio
+
+  const unitLabel = unitSystem === 'imperial' ? 'lb' : 'kg'
+  const weightFactor = unitSystem === 'imperial' ? 2.20462262 : 1
+  const formatWeight = (kgValue, digits = 1) => `${(kgValue * weightFactor).toFixed(digits)} ${unitLabel}`
+
+  // Seat-by-seat weight heatmap (left row + right row)
+  const leftWeights = boatPositions.left.map(m => m?.weight_kg || 0)
+  const rightWeights = boatPositions.right.map(m => m?.weight_kg || 0)
+  const altLeftWeights = boatPositions.left.map((m, idx) =>
+    (m?.weight_kg || 0) + (boatPositions.left_secondary?.[idx]?.weight_kg || 0)
+  )
+  const altRightWeights = boatPositions.right.map((m, idx) =>
+    (m?.weight_kg || 0) + (boatPositions.right_secondary?.[idx]?.weight_kg || 0)
+  )
+  const maxSeat = Math.max(
+    1,
+    ...leftWeights,
+    ...rightWeights,
+    ...(altLeftWeights || []),
+    ...(altRightWeights || [])
+  )
+
   const getBalanceStatus = (balancePercent) => {
     if (balancePercent < 3) return { label: 'Excellent', color: 'text-green-600', bg: 'bg-green-100' }
     if (balancePercent < 5) return { label: 'Good', color: 'text-blue-600', bg: 'bg-blue-100' }
@@ -578,7 +593,7 @@ export default function Lineups() {
     }
   }
 
-  const MemberCard = ({ member, index, isDragging }) => {
+  const MemberCard = ({ member, index, isDragging, isSecondary = false }) => {
     const rsvpBadge = member.rsvpStatus ? getRsvpBadge(member.rsvpStatus) : null
 
     return (
@@ -588,14 +603,21 @@ export default function Lineups() {
             ref={provided.innerRef}
             {...provided.draggableProps}
             {...provided.dragHandleProps}
-            className={`p-2 mb-2 ${member.is_guest ? 'bg-orange-50' : 'bg-white'} border rounded-lg shadow-sm cursor-move hover:shadow-md transition-shadow ${
+            className={`p-2 mb-1 ${member.is_guest ? 'bg-orange-50' : 'bg-white'} border rounded-lg shadow-sm cursor-move hover:shadow-md transition-shadow ${
               snapshot.isDragging ? 'opacity-50' : ''
             }`}
           >
             <div className="flex items-start justify-between">
               <div className="flex-1">
                 <div className="flex items-center gap-1 flex-wrap">
-                  <span className="text-sm font-medium text-gray-900">{member.full_name}</span>
+                  <span className="text-sm font-medium text-gray-900">
+                    {member.full_name}
+                  </span>
+                  {isSecondary && (
+                    <span className="px-1 py-0.5 text-[10px] font-semibold bg-orange-100 text-orange-700 rounded">
+                      ALT
+                    </span>
+                  )}
                   {member.is_guest && (
                     <span className="px-1.5 py-0.5 text-xs font-bold bg-orange-200 text-orange-800 rounded">
                       GUEST
@@ -613,7 +635,7 @@ export default function Lineups() {
                   )}
                 </div>
                 <div className="text-xs text-gray-500 flex gap-2 flex-wrap">
-                  {member.weight_kg && <span className="font-semibold">{member.weight_kg} kg</span>}
+                  {member.weight_kg && <span className="font-semibold">{formatWeight(member.weight_kg)}</span>}
                   {member.preferred_side && <span>• {member.preferred_side}</span>}
                   {member.skill_level && <span>• {member.skill_level}</span>}
                 </div>
@@ -630,66 +652,33 @@ export default function Lineups() {
     )
   }
 
-  const BoatPosition = ({ droppableId, member, label, side, secondaryMember = null, showSecondary = false }) => {
+  const BoatPosition = ({ droppableId, member, label, side, secondaryMember = null }) => {
     const primaryWeight = member?.weight_kg || 0
     const secondaryWeight = secondaryMember?.weight_kg || 0
     const weightDiff = secondaryWeight - primaryWeight
 
-    return (
-      <div className={`${showSecondary ? 'space-y-1' : ''}`}>
-        {/* Primary Position */}
-        <Droppable droppableId={droppableId}>
-          {(provided, snapshot) => (
-            <div
-              ref={provided.innerRef}
-              {...provided.droppableProps}
-              className={`p-2 border-2 border-dashed rounded-lg min-h-[60px] flex items-center justify-center ${
-                snapshot.isDraggingOver ? 'bg-primary-50 border-primary-300' : 'bg-gray-50 border-gray-300'
-              }`}
-            >
-              {member ? (
-                <MemberCard member={member} index={0} />
-              ) : (
-                <span className="text-xs text-gray-400">{label}</span>
-              )}
-              {provided.placeholder}
-            </div>
-          )}
-        </Droppable>
+    const cards = []
+    if (member) cards.push({ member, isSecondary: false })
+    if (secondaryMember) cards.push({ member: secondaryMember, isSecondary: true })
 
-        {/* Secondary Position (Comparison) */}
-        {showSecondary && (
-          <Droppable droppableId={`${droppableId}-secondary`}>
-            {(provided, snapshot) => (
-              <div
-                ref={provided.innerRef}
-                {...provided.droppableProps}
-                className={`p-2 border-2 border-dashed rounded-lg min-h-[50px] flex items-center justify-center relative ${
-                  snapshot.isDraggingOver ? 'bg-orange-50 border-orange-300' : 'bg-orange-50/50 border-orange-200'
-                }`}
-              >
-                <div className="absolute top-0 left-1 text-xs font-bold text-orange-600">ALT</div>
-                {secondaryMember ? (
-                  <div className="w-full">
-                    <div className="text-xs font-medium text-gray-900">{secondaryMember.full_name}</div>
-                    <div className="flex items-center gap-1 text-xs">
-                      <span className="text-gray-500">{secondaryWeight} kg</span>
-                      {member && weightDiff !== 0 && (
-                        <span className={`font-bold ${weightDiff > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                          ({weightDiff > 0 ? '+' : ''}{weightDiff.toFixed(1)} kg)
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  <span className="text-xs text-orange-400">Compare</span>
-                )}
-                {provided.placeholder}
-              </div>
-            )}
-          </Droppable>
+    return (
+      <Droppable droppableId={droppableId}>
+        {(provided, snapshot) => (
+          <div
+            ref={provided.innerRef}
+            {...provided.droppableProps}
+            className={`p-2 border-2 border-dashed rounded-lg min-h-[60px] flex flex-col gap-2 ${
+              snapshot.isDraggingOver ? 'bg-primary-50 border-primary-300' : 'bg-gray-50 border-gray-300'
+            }`}
+          >
+            {cards.length === 0 && <span className="text-xs text-gray-400">{label}</span>}
+            {cards.map((card, idx) => (
+              <MemberCard key={`${droppableId}-${card.member.id}-${card.isSecondary ? 'alt' : 'primary'}`} member={card.member} index={idx} isSecondary={card.isSecondary} />
+            ))}
+            {provided.placeholder}
+          </div>
         )}
-      </div>
+      </Droppable>
     )
   }
 
@@ -713,20 +702,23 @@ export default function Lineups() {
               ✏️ Editing: {lineupName || 'Unnamed Lineup'}
             </p>
           )}
-          {comparisonMode && (
-            <p className="text-sm text-orange-600 mt-1">
-              ⚖️ Comparison Mode: Drag alternate members to compare weights
-            </p>
-          )}
         </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setComparisonMode(!comparisonMode)}
-            className={`btn ${comparisonMode ? 'bg-orange-600 hover:bg-orange-700 text-white' : 'bg-orange-100 hover:bg-orange-200 text-orange-700'}`}
-            title="Toggle comparison mode to compare paddlers side-by-side"
-          >
-            ⚖️ {comparisonMode ? 'Exit Compare' : 'Compare Mode'}
-          </button>
+        <div className="flex gap-2 flex-wrap justify-end">
+          <div className="flex items-center gap-1 bg-gray-100 px-3 py-1 rounded-full text-sm">
+            <span className="text-gray-600">Units:</span>
+            <button
+              onClick={() => setUnitSystem('metric')}
+              className={`px-2 py-0.5 rounded ${unitSystem === 'metric' ? 'bg-primary-600 text-white' : 'text-gray-700 hover:bg-gray-200'}`}
+            >
+              Metric
+            </button>
+            <button
+              onClick={() => setUnitSystem('imperial')}
+              className={`px-2 py-0.5 rounded ${unitSystem === 'imperial' ? 'bg-primary-600 text-white' : 'text-gray-700 hover:bg-gray-200'}`}
+            >
+              Imperial
+            </button>
+          </div>
           <button
             onClick={handleResetPositions}
             className="btn bg-gray-500 hover:bg-gray-600 text-white"
@@ -891,15 +883,15 @@ export default function Lineups() {
       <div className="card mb-6 bg-gradient-to-r from-blue-50 to-purple-50">
         <h3 className="font-semibold text-gray-900 mb-4">Weight Distribution & Balance</h3>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
           {/* Total Weight */}
           <div className="bg-white rounded-lg p-3 shadow-sm">
             <p className="text-xs text-gray-600">Total Weight</p>
             <p className="text-2xl font-bold text-gray-900">
-              {balance.totalWeight.toFixed(1)} kg
-              {comparisonMode && balance.hasSecondary && (
-                <span className={`text-sm ml-1 ${balance.totalWeightDiff > 0 ? 'text-red-600' : balance.totalWeightDiff < 0 ? 'text-green-600' : 'text-gray-500'}`}>
-                  ({balance.totalWeightDiff > 0 ? '+' : ''}{balance.totalWeightDiff.toFixed(1)})
+              {formatWeight(balance.totalWeight)}
+              {balance.hasSecondary && (
+                <span className="text-sm ml-2 text-gray-600">
+                  ({formatWeight(balance.totalWeightSecondary)} alt)
                 </span>
               )}
             </p>
@@ -910,37 +902,16 @@ export default function Lineups() {
             <p className="text-xs text-gray-600">Left vs Right</p>
             <div className="flex items-center gap-2">
               <p className="text-lg font-bold text-gray-900">
-                {balance.leftTotal.toFixed(1)}
-                {comparisonMode && balance.leftTotalDiff !== 0 && (
-                  <span className={`text-xs ml-0.5 ${balance.leftTotalDiff > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                    ({balance.leftTotalDiff > 0 ? '+' : ''}{balance.leftTotalDiff.toFixed(1)})
+                {formatWeight(balance.leftTotal)} / {formatWeight(balance.rightTotal)}
+                {balance.hasSecondary && (
+                  <span className="text-xs ml-1 text-gray-600">
+                    ({formatWeight(balance.leftTotalSecondary)} / {formatWeight(balance.rightTotalSecondary)})
                   </span>
                 )}
-                {' / '}
-                {balance.rightTotal.toFixed(1)}
-                {comparisonMode && balance.rightTotalDiff !== 0 && (
-                  <span className={`text-xs ml-0.5 ${balance.rightTotalDiff > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                    ({balance.rightTotalDiff > 0 ? '+' : ''}{balance.rightTotalDiff.toFixed(1)})
-                  </span>
-                )}
-                {' kg'}
               </p>
             </div>
             <div className={`text-xs font-semibold mt-1 ${getBalanceStatus(balance.sideBalance).color}`}>
-              Δ {balance.sideDiff.toFixed(1)} kg ({balance.sideBalance.toFixed(1)}%)
-            </div>
-          </div>
-
-          {/* Front vs Back */}
-          <div className="bg-white rounded-lg p-3 shadow-sm">
-            <p className="text-xs text-gray-600">Front vs Back</p>
-            <div className="flex items-center gap-2">
-              <p className="text-lg font-bold text-gray-900">
-                {balance.frontTotal.toFixed(1)} / {balance.backTotal.toFixed(1)} kg
-              </p>
-            </div>
-            <div className={`text-xs font-semibold mt-1 ${getBalanceStatus(balance.frontBackBalance).color}`}>
-              Δ {balance.frontBackDiff.toFixed(1)} kg ({balance.frontBackBalance.toFixed(1)}%)
+              Δ {formatWeight(balance.sideDiff)} ({balance.sideBalance.toFixed(1)}%)
             </div>
           </div>
 
@@ -951,9 +922,6 @@ export default function Lineups() {
               <div className={`text-xs px-2 py-1 rounded ${getBalanceStatus(balance.sideBalance).bg} ${getBalanceStatus(balance.sideBalance).color} font-semibold`}>
                 L/R: {getBalanceStatus(balance.sideBalance).label}
               </div>
-              <div className={`text-xs px-2 py-1 rounded ${getBalanceStatus(balance.frontBackBalance).bg} ${getBalanceStatus(balance.frontBackBalance).color} font-semibold`}>
-                F/B: {getBalanceStatus(balance.frontBackBalance).label}
-              </div>
             </div>
           </div>
         </div>
@@ -963,47 +931,101 @@ export default function Lineups() {
           {/* Left/Right Balance Bar */}
           <div>
             <div className="flex justify-between text-xs text-gray-600 mb-1">
-              <span>Left: {balance.leftTotal.toFixed(1)} kg</span>
-              <span>Right: {balance.rightTotal.toFixed(1)} kg</span>
+              <span>Left: {formatWeight(balance.leftTotal)}</span>
+              <span>Right: {formatWeight(balance.rightTotal)}</span>
             </div>
-            <div className="relative h-6 bg-gray-200 rounded-full overflow-hidden">
-              <div
-                className="absolute left-0 h-full bg-blue-500 transition-all"
-                style={{ width: `${balance.totalWeight > 0 ? (balance.leftTotal / balance.totalWeight) * 100 : 50}%` }}
-              />
-              <div
-                className="absolute right-0 h-full bg-purple-500 transition-all"
-                style={{ width: `${balance.totalWeight > 0 ? (balance.rightTotal / balance.totalWeight) * 100 : 50}%` }}
-              />
-              <div className="absolute inset-0 flex items-center justify-center">
-                <span className="text-xs font-semibold text-white drop-shadow">
-                  {balance.sideDiff.toFixed(1)} kg diff
-                </span>
+            <div className="space-y-1">
+              {/* Primary */}
+              <div className="relative h-6 bg-gray-200 rounded-full overflow-hidden">
+                <div
+                  className={`absolute left-0 h-full ${balance.leftTotal >= balance.rightTotal ? 'bg-cyan-600' : 'bg-sky-600'} transition-all z-10 opacity-90`}
+                  style={{ width: `${balance.totalWeight > 0 ? (balance.leftTotal / balance.totalWeight) * 100 : 50}%` }}
+                />
+                <div
+                  className={`absolute right-0 h-full ${balance.rightTotal > balance.leftTotal ? 'bg-cyan-600' : 'bg-sky-600'} transition-all z-10 opacity-90`}
+                  style={{ width: `${balance.totalWeight > 0 ? (balance.rightTotal / balance.totalWeight) * 100 : 50}%` }}
+                />
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
+                  <span className="text-xs font-bold text-white drop-shadow flex items-center gap-2">
+                    <span>Δ {formatWeight(balance.sideDiff)}</span>
+                    {balance.hasSecondary && (
+                      <span className="text-[11px] text-gray-100">Alt Δ {formatWeight(balance.leftTotalSecondary - balance.rightTotalSecondary)}</span>
+                    )}
+                  </span>
+                </div>
               </div>
+                {/* Alternate */}
+                {balance.hasSecondary && balance.totalWeightSecondary > 0 && (
+                  <div className="relative h-4 bg-gray-100 rounded-full overflow-hidden border border-gray-200">
+                    <div
+                      className={`absolute left-0 h-full ${balance.leftTotalSecondary >= balance.rightTotalSecondary ? 'bg-emerald-500' : 'bg-teal-400'} transition-all z-10 opacity-90`}
+                      style={{ width: `${(balance.leftTotalSecondary / balance.totalWeightSecondary) * 100}%` }}
+                  />
+                  <div
+                    className={`absolute right-0 h-full ${balance.rightTotalSecondary > balance.leftTotalSecondary ? 'bg-emerald-500' : 'bg-teal-500'} transition-all z-10 opacity-90`}
+                    style={{ width: `${(balance.rightTotalSecondary / balance.totalWeightSecondary) * 100}%` }}
+                    />
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <span className="text-[10px] font-semibold text-white drop-shadow">
+                        Alt Δ {formatWeight(balance.leftTotalSecondary - balance.rightTotalSecondary)}
+                      </span>
+                    </div>
+                  </div>
+                )}
             </div>
           </div>
 
-          {/* Front/Back Balance Bar */}
-          <div>
-            <div className="flex justify-between text-xs text-gray-600 mb-1">
-              <span>Front: {balance.frontTotal.toFixed(1)} kg</span>
-              <span>Back: {balance.backTotal.toFixed(1)} kg</span>
+          {/* Seat heatmap (top/bottom rows) */}
+          <div className="space-y-1">
+            <div className="flex justify-between text-[11px] text-gray-600">
+              <span>Seat heatmap (front to back)</span>
+              {balance.hasSecondary && <span className="text-gray-500">Alt rows include secondary</span>}
             </div>
-            <div className="relative h-6 bg-gray-200 rounded-full overflow-hidden">
-              <div
-                className="absolute left-0 h-full bg-green-500 transition-all"
-                style={{ width: `${balance.totalWeight > 0 ? (balance.frontTotal / balance.totalWeight) * 100 : 50}%` }}
-              />
-              <div
-                className="absolute right-0 h-full bg-orange-500 transition-all"
-                style={{ width: `${balance.totalWeight > 0 ? (balance.backTotal / balance.totalWeight) * 100 : 50}%` }}
-              />
-              <div className="absolute inset-0 flex items-center justify-center">
-                <span className="text-xs font-semibold text-white drop-shadow">
-                  {balance.frontBackDiff.toFixed(1)} kg diff
-                </span>
+            <div className="grid grid-cols-10 gap-1 h-4">
+              {leftWeights.map((w, idx) => (
+                <div key={`left-${idx}`} className="relative rounded-full overflow-hidden bg-gray-100 border border-gray-200">
+                  <div
+                    className="absolute inset-0 bg-rose-500"
+                    style={{ opacity: Math.min(1, w / maxSeat) }}
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="grid grid-cols-10 gap-1 h-4">
+              {rightWeights.map((w, idx) => (
+                <div key={`right-${idx}`} className="relative rounded-full overflow-hidden bg-gray-100 border border-gray-200">
+                  <div
+                    className="absolute inset-0 bg-rose-500"
+                    style={{ opacity: Math.min(1, w / maxSeat) }}
+                  />
+                </div>
+              ))}
+            </div>
+
+            {balance.hasSecondary && balance.totalWeightSecondary > 0 && (
+              <div className="space-y-1">
+                <div className="grid grid-cols-10 gap-1 h-3">
+                  {altLeftWeights.map((w, idx) => (
+                    <div key={`alt-left-${idx}`} className="relative rounded-full overflow-hidden bg-gray-100 border border-gray-200">
+                      <div
+                        className="absolute inset-0 bg-rose-400"
+                        style={{ opacity: Math.min(1, w / maxSeat) }}
+                      />
+                    </div>
+                  ))}
+                </div>
+                <div className="grid grid-cols-10 gap-1 h-3">
+                  {altRightWeights.map((w, idx) => (
+                    <div key={`alt-right-${idx}`} className="relative rounded-full overflow-hidden bg-gray-100 border border-gray-200">
+                      <div
+                        className="absolute inset-0 bg-rose-400"
+                        style={{ opacity: Math.min(1, w / maxSeat) }}
+                      />
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
 
@@ -1129,7 +1151,6 @@ export default function Lineups() {
                     member={boatPositions.drummer}
                     label="Drag drummer here"
                     secondaryMember={boatPositions.drummer_secondary}
-                    showSecondary={comparisonMode}
                   />
                 </div>
 
@@ -1151,7 +1172,6 @@ export default function Lineups() {
                                 label={`Position ${index + 1}`}
                                 side="left"
                                 secondaryMember={boatPositions.left_secondary?.[index]}
-                                showSecondary={comparisonMode}
                               />
                             </div>
                           </div>
@@ -1173,7 +1193,6 @@ export default function Lineups() {
                                 label={`Position ${index + 1}`}
                                 side="right"
                                 secondaryMember={boatPositions.right_secondary?.[index]}
-                                showSecondary={comparisonMode}
                               />
                             </div>
                           </div>
@@ -1191,7 +1210,6 @@ export default function Lineups() {
                     member={boatPositions.steersperson}
                     label="Drag steersperson here"
                     secondaryMember={boatPositions.steersperson_secondary}
-                    showSecondary={comparisonMode}
                   />
                 </div>
 

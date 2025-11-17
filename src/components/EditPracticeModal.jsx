@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import toast from 'react-hot-toast'
 import { usePracticeStore } from '../store/practiceStore'
 import { useAuthStore } from '../store/authStore'
 
@@ -18,11 +19,12 @@ export default function EditPracticeModal({ isOpen, onClose, practice }) {
     max_capacity: 22,
     status: 'scheduled',
   })
+  const [initialData, setInitialData] = useState(null)
 
   // Populate form when practice changes
   useEffect(() => {
     if (practice) {
-      setFormData({
+      const nextData = {
         title: practice.title || '',
         description: practice.description || '',
         practice_type: practice.practice_type || 'water',
@@ -33,7 +35,9 @@ export default function EditPracticeModal({ isOpen, onClose, practice }) {
         location_address: practice.location_address || '',
         max_capacity: practice.max_capacity || 22,
         status: practice.status || 'scheduled',
-      })
+      }
+      setFormData(nextData)
+      setInitialData(nextData)
     }
   }, [practice])
 
@@ -46,6 +50,21 @@ export default function EditPracticeModal({ isOpen, onClose, practice }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+
+    if (!user) {
+      toast.error('You must be signed in to update a practice.')
+      return
+    }
+
+    if (!practice?.id) {
+      toast.error('No practice selected.')
+      return
+    }
+
+    if (initialData && JSON.stringify(formData) === JSON.stringify(initialData)) {
+      toast('No changes to save', { icon: 'ℹ️' })
+      return
+    }
 
     console.log('Submitting practice update:', practice.id, formData)
     const result = await updatePractice(practice.id, formData)

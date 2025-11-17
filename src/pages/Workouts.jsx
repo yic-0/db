@@ -4,6 +4,7 @@ import { useAuthStore } from '../store/authStore'
 import { useRosterStore } from '../store/rosterStore'
 import { format, startOfWeek, endOfWeek, subDays } from 'date-fns'
 import toast from 'react-hot-toast'
+import Icon from '../components/Icon'
 
 export default function Workouts() {
   const {
@@ -308,7 +309,9 @@ export default function Workouts() {
                 <div className="text-3xl font-bold text-green-600">{userStats.totalWorkouts}</div>
                 <div className="text-xs text-gray-500">all time</div>
               </div>
-              <div className="text-4xl">💪</div>
+              <div className="w-12 h-12 rounded-2xl bg-white/70 flex items-center justify-center text-green-600 shadow-sm">
+                <Icon name="workouts" size={26} />
+              </div>
             </div>
           </div>
 
@@ -319,7 +322,9 @@ export default function Workouts() {
                 <div className="text-3xl font-bold text-purple-600">{userStats.totalDuration}</div>
                 <div className="text-xs text-gray-500">minutes</div>
               </div>
-              <div className="text-4xl">⏱️</div>
+              <div className="w-12 h-12 rounded-2xl bg-white/70 flex items-center justify-center text-purple-600 shadow-sm">
+                <Icon name="clock" size={26} />
+              </div>
             </div>
           </div>
 
@@ -330,7 +335,9 @@ export default function Workouts() {
                 <div className="text-3xl font-bold text-orange-600">{userStats.totalDistance.toFixed(1)}</div>
                 <div className="text-xs text-gray-500">km</div>
               </div>
-              <div className="text-4xl">🏃</div>
+              <div className="w-12 h-12 rounded-2xl bg-white/70 flex items-center justify-center text-orange-600 shadow-sm">
+                <Icon name="target" size={26} />
+              </div>
             </div>
           </div>
         </div>
@@ -720,9 +727,11 @@ export default function Workouts() {
               {workoutLogs.filter(log => log.user_id === user?.id).map(workout => (
                 <div key={workout.id} className="card hover:shadow-md transition-shadow">
                   <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        <span className="text-2xl">{workout.workout_type?.icon || '💪'}</span>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-2">
+                        <span className="inline-flex items-center justify-center w-10 h-10 rounded-2xl bg-success-50 text-success-600">
+                          <Icon name="workouts" size={20} />
+                        </span>
                         <div>
                           <h3 className="font-semibold text-gray-900">{workout.title}</h3>
                           <div className="flex items-center gap-2 text-sm text-gray-600">
@@ -902,7 +911,7 @@ export default function Workouts() {
                     date: new Date(log.workout_date),
                     userName: log.user_profile?.full_name || 'Unknown',
                     title: log.title,
-                    icon: log.workout_type?.icon || '💪',
+                    icon: <Icon name="workouts" size={18} className="text-success-600" />,
                     typeName: log.workout_type?.name,
                     duration: log.duration_minutes,
                     distance: log.distance_km
@@ -913,7 +922,7 @@ export default function Workouts() {
                     date: new Date(a.completed_at),
                     userName: a.assigned_to_profile?.full_name || 'Unknown',
                     title: a.title,
-                    icon: a.workout_type?.icon || '✅',
+                    icon: <Icon name="check" size={18} className="text-success-600" />,
                     typeName: a.workout_type?.name || 'Assignment',
                     duration: a.target_duration_minutes,
                     distance: a.target_distance_km

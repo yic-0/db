@@ -5,6 +5,7 @@ import { useSettingsStore } from '../store/settingsStore'
 import CreatePracticeModal from '../components/CreatePracticeModal'
 import EditPracticeModal from '../components/EditPracticeModal'
 import AttendanceModal from '../components/AttendanceModal'
+import Icon from '../components/Icon'
 import { format } from 'date-fns'
 
 export default function Practices() {
@@ -117,14 +118,20 @@ export default function Practices() {
     }
   }
 
-  const getPracticeTypeIcon = (type) => {
-    switch (type) {
-      case 'water': return '🚣'
-      case 'land': return '🏃'
-      case 'gym': return '💪'
-      case 'meeting': return '📋'
-      default: return '📅'
+  const renderPracticeTypeIcon = (type) => {
+    const map = {
+      water: { name: 'boat', bg: 'bg-primary-50', color: 'text-primary-600' },
+      land: { name: 'workouts', bg: 'bg-amber-50', color: 'text-amber-600' },
+      gym: { name: 'fire', bg: 'bg-rose-50', color: 'text-rose-600' },
+      meeting: { name: 'announcements', bg: 'bg-indigo-50', color: 'text-indigo-600' },
+      default: { name: 'practice', bg: 'bg-gray-50', color: 'text-gray-600' }
     }
+    const icon = map[type] || map.default
+    return (
+      <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${icon.bg}`}>
+        <Icon name={icon.name} size={20} className={icon.color} />
+      </div>
+    )
   }
 
   const getStatusColor = (status) => {
@@ -220,7 +227,7 @@ export default function Practices() {
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
-                      <span className="text-2xl">{getPracticeTypeIcon(practice.practice_type)}</span>
+                      {renderPracticeTypeIcon(practice.practice_type)}
                       <div className="flex-1">
                         <div className="flex items-center justify-between">
                           <h3 className="text-xl font-semibold text-gray-900">
@@ -253,10 +260,13 @@ export default function Practices() {
                             </div>
                           )}
                         </div>
-                        <p className="text-sm text-gray-600">
-                          {formatDate(practice.date)} • {formatTime(practice.start_time)}
-                          {practice.end_time && ` - ${formatTime(practice.end_time)}`}
-                        </p>
+                        <div className="flex items-center gap-2 text-sm text-gray-600">
+                          <Icon name="calendar" size={16} className="text-gray-500" />
+                          <span>
+                            {formatDate(practice.date)} • {formatTime(practice.start_time)}
+                            {practice.end_time && ` - ${formatTime(practice.end_time)}`}
+                          </span>
+                        </div>
                       </div>
                     </div>
 
@@ -265,9 +275,15 @@ export default function Practices() {
                     )}
 
                     <div className="flex items-center gap-4 text-sm text-gray-600">
-                      <span>📍 {practice.location_name}</span>
+                      <span className="flex items-center gap-2">
+                        <Icon name="location" size={16} className="text-gray-500" />
+                        {practice.location_name}
+                      </span>
                       {(hasRole('admin') || showAttendeeCount) && (
-                        <span>👥 {counts.yes}/{practice.max_capacity}</span>
+                        <span className="flex items-center gap-2">
+                          <Icon name="roster" size={16} className="text-gray-500" />
+                          {counts.yes}/{practice.max_capacity}
+                        </span>
                       )}
                     </div>
                   </div>
@@ -275,7 +291,7 @@ export default function Practices() {
                   <div className="ml-4">
                     {userRSVP && (
                       <div className={`px-3 py-1 rounded-full text-sm font-medium border ${getStatusColor(userRSVP.status)}`}>
-                        {userRSVP.status.toUpperCase()}
+                        {userRSVP.status ? userRSVP.status.toUpperCase() : 'NO RESPONSE'}
                       </div>
                     )}
                   </div>
@@ -285,21 +301,24 @@ export default function Practices() {
                 <div className="mt-4 flex gap-2">
                   <button
                     onClick={() => handleRSVP(practice.id, 'yes')}
-                    className={`btn ${userRSVP?.status === 'yes' ? 'bg-green-600 text-white' : 'btn-secondary'}`}
+                    className={`btn flex items-center gap-2 ${userRSVP?.status === 'yes' ? 'bg-green-600 text-white' : 'btn-secondary'}`}
                   >
-                    ✓ Yes {(hasRole('admin') || showAttendeeCount) && `(${counts.yes})`}
+                    <Icon name="check" size={16} className={userRSVP?.status === 'yes' ? 'text-white' : 'text-green-600'} />
+                    <span>Yes {(hasRole('admin') || showAttendeeCount) && `(${counts.yes})`}</span>
                   </button>
                   <button
                     onClick={() => handleRSVP(practice.id, 'no')}
-                    className={`btn ${userRSVP?.status === 'no' ? 'bg-red-600 text-white' : 'btn-secondary'}`}
+                    className={`btn flex items-center gap-2 ${userRSVP?.status === 'no' ? 'bg-red-600 text-white' : 'btn-secondary'}`}
                   >
-                    ✗ No {(hasRole('admin') || showAttendeeCount) && `(${counts.no})`}
+                    <Icon name="close" size={16} className={userRSVP?.status === 'no' ? 'text-white' : 'text-red-600'} />
+                    <span>No {(hasRole('admin') || showAttendeeCount) && `(${counts.no})`}</span>
                   </button>
                   <button
                     onClick={() => handleRSVP(practice.id, 'maybe')}
-                    className={`btn ${userRSVP?.status === 'maybe' ? 'bg-yellow-600 text-white' : 'btn-secondary'}`}
+                    className={`btn flex items-center gap-2 ${userRSVP?.status === 'maybe' ? 'bg-yellow-600 text-white' : 'btn-secondary'}`}
                   >
-                    ? Maybe {(hasRole('admin') || showAttendeeCount) && `(${counts.maybe})`}
+                    <Icon name="clock" size={16} className={userRSVP?.status === 'maybe' ? 'text-white' : 'text-amber-600'} />
+                    <span>Maybe {(hasRole('admin') || showAttendeeCount) && `(${counts.maybe})`}</span>
                   </button>
 
                   <button
@@ -368,10 +387,16 @@ export default function Practices() {
                     ) : (
                       <div className="text-center py-8 text-gray-500">
                         {(hasRole('admin') || showAttendeeCount) ? (
-                          <div className="space-y-2">
-                            <p className="text-sm">✓ Yes: {counts.yes}</p>
-                            <p className="text-sm">? Maybe: {counts.maybe}</p>
-                            <p className="text-sm">✗ No: {counts.no}</p>
+                          <div className="space-y-2 text-left inline-block">
+                            <p className="text-sm flex items-center gap-2">
+                              <Icon name="check" size={16} className="text-green-600" /> Yes: {counts.yes}
+                            </p>
+                            <p className="text-sm flex items-center gap-2">
+                              <Icon name="clock" size={16} className="text-amber-600" /> Maybe: {counts.maybe}
+                            </p>
+                            <p className="text-sm flex items-center gap-2">
+                              <Icon name="close" size={16} className="text-red-600" /> No: {counts.no}
+                            </p>
                           </div>
                         ) : (
                           <p className="text-sm italic">Names and counts are hidden</p>

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import toast from 'react-hot-toast'
 import { useAuthStore } from '../store/authStore'
 
 export default function Profile() {
@@ -16,11 +17,12 @@ export default function Profile() {
     can_steer: profile?.can_steer || false,
     can_drum: profile?.can_drum || false,
   })
+  const [initialFormData, setInitialFormData] = useState(null)
 
   // Update form data when profile changes
   useEffect(() => {
     if (profile) {
-      setFormData({
+      const nextForm = {
         full_name: profile.full_name || '',
         phone: profile.phone || '',
         emergency_contact_name: profile.emergency_contact_name || '',
@@ -31,7 +33,9 @@ export default function Profile() {
         height_cm: profile.height_cm || '',
         can_steer: profile.can_steer || false,
         can_drum: profile.can_drum || false,
-      })
+      }
+      setFormData(nextForm)
+      setInitialFormData(nextForm)
     }
   }, [profile])
 
@@ -46,14 +50,22 @@ export default function Profile() {
   const handleSubmit = async (e) => {
     e.preventDefault()
 
+    const normalizeProfileData = (data) => ({
+      ...data,
+      weight_kg: data.weight_kg === '' ? null : parseFloat(data.weight_kg),
+      height_cm: data.height_cm === '' ? null : parseInt(data.height_cm),
+      phone: data.phone || null,
+      emergency_contact_name: data.emergency_contact_name || null,
+      emergency_contact_phone: data.emergency_contact_phone || null,
+    })
+
     // Clean up the data - convert empty strings to null for numeric fields
-    const cleanData = {
-      ...formData,
-      weight_kg: formData.weight_kg === '' ? null : parseFloat(formData.weight_kg),
-      height_cm: formData.height_cm === '' ? null : parseInt(formData.height_cm),
-      phone: formData.phone || null,
-      emergency_contact_name: formData.emergency_contact_name || null,
-      emergency_contact_phone: formData.emergency_contact_phone || null,
+    const cleanData = normalizeProfileData(formData)
+    const baseline = normalizeProfileData(initialFormData || formData)
+
+    if (JSON.stringify(cleanData) === JSON.stringify(baseline)) {
+      toast('No changes to save', { icon: 'ℹ️' })
+      return
     }
 
     await updateProfile(cleanData)
