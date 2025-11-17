@@ -245,22 +245,22 @@ export default function PracticePrep() {
       {/* Stats Dashboard */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <div className="card">
-          <h3 className="text-sm font-medium text-gray-600 mb-1">Attended</h3>
-          <p className="text-3xl font-bold text-green-600">{attendedMembers.length}</p>
+          <div className="text-xs text-gray-600">Attended</div>
+          <div className="text-3xl font-bold text-green-700">{attendedMembers.length}</div>
         </div>
         <div className="card">
-          <h3 className="text-sm font-medium text-gray-600 mb-1">RSVP'd Yes</h3>
-          <p className="text-3xl font-bold text-blue-600">{rsvpdYes.length}</p>
+          <div className="text-xs text-gray-600">RSVP'd Yes</div>
+          <div className="text-3xl font-bold text-blue-700">{rsvpdYes.length}</div>
         </div>
         <div className="card">
-          <h3 className="text-sm font-medium text-gray-600 mb-1">Maybe</h3>
-          <p className="text-3xl font-bold text-yellow-600">{rsvpdMaybe.length}</p>
+          <div className="text-xs text-gray-600">Maybe</div>
+          <div className="text-3xl font-bold text-yellow-700">{rsvpdMaybe.length}</div>
         </div>
         <div className="card">
-          <h3 className="text-sm font-medium text-gray-600 mb-1">Capacity</h3>
-          <p className="text-3xl font-bold text-purple-600">
+          <div className="text-xs text-gray-600">Capacity</div>
+          <div className="text-3xl font-bold text-purple-700">
             {attendedMembers.length}/{selectedPractice.max_capacity}
-          </p>
+          </div>
         </div>
       </div>
 
