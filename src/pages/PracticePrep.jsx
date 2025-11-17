@@ -41,6 +41,16 @@ export default function PracticePrep() {
     }
   }, [selectedPractice, fetchRSVPs])
 
+  // Keep selected practice in sync when notes are updated elsewhere (e.g., Manage Attendance modal)
+  useEffect(() => {
+    if (!selectedPractice) return
+    const updated = practices.find(p => p.id === selectedPractice.id)
+    if (updated && updated !== selectedPractice) {
+      setSelectedPractice(updated)
+      setPracticeNotes(updated.coach_notes || '')
+    }
+  }, [practices, selectedPractice])
+
   const formatDate = (dateStr) => {
     try {
       return format(new Date(dateStr), 'EEEE, MMM d, yyyy')
