@@ -9,7 +9,7 @@ import Icon from '../components/Icon'
 import { format } from 'date-fns'
 
 export default function Practices() {
-  const { practices, rsvps, loading, fetchPractices, fetchRSVPs, setRSVP, getRSVPCount, getUserRSVP, deletePractice } = usePracticeStore()
+  const { practices, rsvps, loading, fetchPractices, fetchRSVPs, setRSVP, getRSVPCount, getUserRSVP, deletePractice, deleteSingleInstance, deleteEntireSeries } = usePracticeStore()
   const { user, profile, hasRole } = useAuthStore()
   const { settings, fetchSettings, updateSetting } = useSettingsStore()
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
@@ -17,6 +17,7 @@ export default function Practices() {
   const [isAttendanceModalOpen, setIsAttendanceModalOpen] = useState(false)
   const [selectedPractice, setSelectedPractice] = useState(null)
   const [expandedPractice, setExpandedPractice] = useState(null)
+  const [showDeleteSeriesChoice, setShowDeleteSeriesChoice] = useState(null) // Practice to delete
 
   // Get privacy settings from database
   const showAttendeeCount = settings['privacy_show_attendee_count'] ?? true
@@ -26,6 +27,15 @@ export default function Practices() {
     fetchPractices()
     fetchSettings()
   }, [fetchPractices, fetchSettings])
+
+  // Keep selected practice (for editing/attendance) in sync with latest store data to avoid stale notes
+  useEffect(() => {
+    if (!selectedPractice) return
+    const latest = practices.find(p => p.id === selectedPractice.id)
+    if (latest && latest !== selectedPractice) {
+      setSelectedPractice(latest)
+    }
+  }, [practices, selectedPractice])
 
   // Fetch RSVPs for all practices when practices are loaded
   useEffect(() => {
@@ -77,12 +87,49 @@ export default function Practices() {
   }
 
   const handleDeletePractice = async (practice) => {
+    // Check if part of a recurring series
+    const isPartOfSeries = practice.parent_practice_id || practice.is_recurring
+
+    if (isPartOfSeries) {
+      // Show series choice dialog
+      setShowDeleteSeriesChoice(practice)
+    } else {
+      const confirmed = window.confirm(
+        `Are you sure you want to delete "${practice.title}"?\n\nThis will also delete all RSVPs for this practice. This action cannot be undone.`
+      )
+
+      if (confirmed) {
+        await deletePractice(practice.id)
+      }
+    }
+  }
+
+  const handleDeleteSingleInstance = async () => {
+    if (!showDeleteSeriesChoice) return
+
     const confirmed = window.confirm(
-      `Are you sure you want to delete "${practice.title}"?\n\nThis will also delete all RSVPs for this practice. This action cannot be undone.`
+      `Delete only this instance of "${showDeleteSeriesChoice.title}"?\n\nOther practices in the series will not be affected.`
     )
 
     if (confirmed) {
-      await deletePractice(practice.id)
+      await deleteSingleInstance(showDeleteSeriesChoice.id)
+      setShowDeleteSeriesChoice(null)
+    }
+  }
+
+  const handleDeleteEntireSeries = async () => {
+    if (!showDeleteSeriesChoice) return
+
+    const parentId = showDeleteSeriesChoice.parent_practice_id || showDeleteSeriesChoice.id
+    const seriesCount = practices.filter(p => p.parent_practice_id === parentId || p.id === parentId).length
+
+    const confirmed = window.confirm(
+      `Delete the ENTIRE series "${showDeleteSeriesChoice.title}"?\n\nThis will delete ${seriesCount} practices and all their RSVPs. This action cannot be undone.`
+    )
+
+    if (confirmed) {
+      await deleteEntireSeries(parentId)
+      setShowDeleteSeriesChoice(null)
     }
   }
 
@@ -230,9 +277,17 @@ export default function Practices() {
                       {renderPracticeTypeIcon(practice.practice_type)}
                       <div className="flex-1">
                         <div className="flex items-center justify-between">
-                          <h3 className="text-xl font-semibold text-gray-900">
-                            {practice.title}
-                          </h3>
+                          <div className="flex items-center gap-2">
+                            <h3 className="text-xl font-semibold text-gray-900">
+                              {practice.title}
+                            </h3>
+                            {(practice.parent_practice_id || practice.is_recurring) && (
+                              <span className="px-2 py-0.5 text-xs rounded bg-blue-100 text-blue-700 font-medium">
+                                Recurring
+                                {practice.is_exception && ' (modified)'}
+                              </span>
+                            )}
+                          </div>
                           {(hasRole('admin') || hasRole('coach')) && (
                             <div className="flex gap-3">
                               <button
@@ -427,6 +482,49 @@ export default function Practices() {
         onClose={handleCloseAttendanceModal}
         practice={selectedPractice}
       />
+
+      {/* Delete Series Choice Modal */}
+      {showDeleteSeriesChoice && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="p-6">
+              <h2 className="text-xl font-bold text-gray-900 mb-4">Delete Recurring Practice</h2>
+              <p className="text-gray-600 mb-6">
+                This practice is part of a recurring series. How would you like to delete it?
+              </p>
+
+              <div className="space-y-3">
+                <button
+                  onClick={handleDeleteSingleInstance}
+                  className="w-full btn btn-secondary text-left flex flex-col items-start py-3"
+                >
+                  <span className="font-semibold">This practice only</span>
+                  <span className="text-xs text-gray-500">
+                    Only delete this specific date. Other practices in the series will remain.
+                  </span>
+                </button>
+
+                <button
+                  onClick={handleDeleteEntireSeries}
+                  className="w-full btn bg-red-600 hover:bg-red-700 text-white text-left flex flex-col items-start py-3"
+                >
+                  <span className="font-semibold">Delete entire series</span>
+                  <span className="text-xs text-white/80">
+                    Delete all practices in this recurring series.
+                  </span>
+                </button>
+              </div>
+
+              <button
+                onClick={() => setShowDeleteSeriesChoice(null)}
+                className="w-full mt-4 text-gray-500 hover:text-gray-700 text-sm"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
