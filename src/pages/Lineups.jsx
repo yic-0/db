@@ -1047,23 +1047,17 @@ export default function Lineups() {
       )}
 
       {/* COG & Left/Right Panels */}
-      <div className="grid md:grid-cols-2 gap-4 mb-6">
-        <div className="card">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="font-semibold text-gray-900">Center of Gravity & Seat Heatmap</h3>
-            <p className="text-xs text-gray-500">Uses current seat assignments; missing weights count as 0.</p>
-          </div>
+      <div className="card mb-6">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-semibold text-gray-900">Center of Gravity, Seat Heatmap & Port/Starboard Balance</h3>
+          <p className="text-xs text-gray-500">Uses current seat assignments; missing weights count as 0.</p>
+        </div>
+        <div className="grid md:grid-cols-2 gap-4">
           <DragonBoatCogPanel
             layout={cogLayout}
             athletes={cogAthletes}
             lineup={cogLineup}
           />
-        </div>
-        <div className="card">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="font-semibold text-gray-900">Port vs Starboard Balance</h3>
-            <p className="text-xs text-gray-500">Live split by seat assignments.</p>
-          </div>
           <DragonBoatLeftRightPanel
             layout={cogLayout}
             athletes={cogAthletes}

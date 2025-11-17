@@ -32,33 +32,28 @@ function DragonBoatCogPanel({ layout, athletes, lineup }) {
   const cgDirection =
     cog.xCg > 0 ? "stern-heavy" : cog.xCg < 0 ? "bow-heavy" : "balanced";
 
-  // Group seats by side (port / center / starboard), then sort by x (bow→stern)
-  const sideGroups = useMemo(() => {
-    const groups = {
-      port: [],
-      center: [],
-      starboard: [],
-    };
-
+  // group seats into rows by x
+  const rows = useMemo(() => {
+    const byX = new Map();
     for (const seat of layout.seats) {
-      const side = seat.side || "center";
-      if (!groups[side]) groups[side] = [];
-      groups[side].push(seat);
+      const list = byX.get(seat.x) || [];
+      list.push(seat);
+      byX.set(seat.x, list);
     }
+    const sortedX = Array.from(byX.keys()).sort((a, b) => a - b); // bow → stern
 
-    Object.keys(groups).forEach((side) => {
-      groups[side] = groups[side].slice().sort((a, b) => a.x - b.x); // bow→stern
-    });
-
-    return groups;
+    return sortedX.map((x) => ({
+      x,
+      seats: byX
+        .get(x)
+        .slice()
+        .sort((a, b) => {
+          const order = (side) =>
+            side === "port" ? 0 : side === "center" ? 1 : 2;
+          return order(a.side) - order(b.side);
+        }),
+    }));
   }, [layout.seats]);
-
-  const sideOrder = ["port", "center", "starboard"];
-  const sideLabel = {
-    port: "Port",
-    center: "Center",
-    starboard: "Starboard",
-  };
 
   return (
     <div className="flex flex-col gap-4 max-w-3xl text-sm">
@@ -74,7 +69,7 @@ function DragonBoatCogPanel({ layout, athletes, lineup }) {
         </div>
       </div>
 
-      {/* COG bar (bow→stern) */}
+      {/* COG bar */}
       <div>
         <div className="flex justify-between text-[11px] text-gray-500 mb-1">
           <span>Bow (x = {xMin.toFixed(1)})</span>
@@ -88,7 +83,7 @@ function DragonBoatCogPanel({ layout, athletes, lineup }) {
         </div>
       </div>
 
-      {/* Horizontal boat heatmap (bow→stern left to right) */}
+      {/* Heatmap */}
       <div>
         <div className="flex items-end justify-between mb-1">
           <h4 className="text-sm font-medium">Seat leverage heatmap</h4>
@@ -98,51 +93,46 @@ function DragonBoatCogPanel({ layout, athletes, lineup }) {
         </div>
 
         <div className="flex flex-col gap-1.5">
-          {sideOrder.map((sideKey) => {
-            const seats = sideGroups[sideKey] || [];
-            if (!seats.length) return null;
-
-            return (
-              <div
-                key={sideKey}
-                className="flex items-center gap-2"
-              >
-                {/* side label */}
-                <div className="w-16 text-right text-[11px] text-gray-500">
-                  {sideLabel[sideKey]}
-                </div>
-
-                {/* seats laid out from bow (left) to stern (right) */}
-                <div className="flex flex-row gap-1.5">
-                  {seats.map((seat) => {
-                    const mNorm = momentBySeat.get(seat.id) ?? 0;
-                    const intensity = mNorm;
-                    const bg = intensity
-                      ? `rgba(239, 68, 68, ${0.15 + 0.65 * intensity})`
-                      : "rgb(249,250,251)";
-
-                    const label = seat.id.replace("row", "R");
-
-                    return (
-                      <div
-                        key={seat.id}
-                        className="min-w-[68px] px-1.5 py-1 rounded border border-gray-300 text-center text-[11px] leading-tight"
-                        style={{ backgroundColor: bg }}
-                        title={`${seat.id}\nImpact: ${(mNorm * 100).toFixed(
-                          0
-                        )}% of max in this lineup\nx=${seat.x.toFixed(2)}`}
-                      >
-                        <div className="font-semibold truncate">{label}</div>
-                        <div className="text-[10px] text-gray-700">
-                          {(mNorm * 100).toFixed(0)}%
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+          {rows.map((row) => (
+            <div
+              key={row.x}
+              className="flex items-center justify-center gap-2"
+            >
+              {/* x label */}
+              <div className="w-16 text-right text-[11px] text-gray-500">
+                x={row.x.toFixed(2)}
               </div>
-            );
-          })}
+
+              {/* seats */}
+              <div className="flex flex-row gap-1.5">
+                {row.seats.map((seat) => {
+                  const mNorm = momentBySeat.get(seat.id) ?? 0;
+                  const intensity = mNorm;
+                  const bg = intensity
+                    ? `rgba(239, 68, 68, ${0.15 + 0.65 * intensity})`
+                    : "rgb(249,250,251)";
+
+                  const label = seat.id.replace("row", "R");
+
+                  return (
+                    <div
+                      key={seat.id}
+                      className="min-w-[68px] px-1.5 py-1 rounded border border-gray-300 text-center text-[11px] leading-tight"
+                      style={{ backgroundColor: bg }}
+                      title={`${seat.id}\nImpact: ${(mNorm * 100).toFixed(
+                        0
+                      )}% of max in this lineup`}
+                    >
+                      <div className="font-semibold truncate">{label}</div>
+                      <div className="text-[10px] text-gray-700">
+                        {(mNorm * 100).toFixed(0)}%
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </div>
