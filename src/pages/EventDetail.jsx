@@ -373,54 +373,38 @@ export default function EventDetail() {
 
       {/* RSVP Status for Current User */}
       {user && !isEditing && (
-        <div className="card mb-6 bg-blue-50 border-blue-200">
-          <div className="flex items-center justify-between">
+        <div className="card mb-6">
+          <div className="flex items-center justify-between gap-3">
             <div>
               <h3 className="font-semibold text-gray-900">Your RSVP Status</h3>
               <p className="text-sm text-gray-600 mt-1">
                 {userRSVP ? `You are: ${userRSVP.status}` : 'You have not responded yet'}
               </p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => handleRSVP('interested')}
-                className={`px-4 py-2 rounded ${
-                  userRSVP?.status === 'interested'
-                    ? 'bg-yellow-500 text-white'
-                    : 'bg-white hover:bg-yellow-100'
-                }`}
+                className={`btn btn-secondary text-sm ${userRSVP?.status === 'interested' ? 'bg-yellow-500 text-white hover:bg-yellow-600' : ''}`}
               >
-                🤔 Interested
+                Interested
               </button>
               <button
                 onClick={() => handleRSVP('registered')}
-                className={`px-4 py-2 rounded ${
-                  userRSVP?.status === 'registered'
-                    ? 'bg-blue-500 text-white'
-                    : 'bg-white hover:bg-blue-100'
-                }`}
+                className={`btn btn-secondary text-sm ${userRSVP?.status === 'registered' ? 'bg-blue-500 text-white hover:bg-blue-600' : ''}`}
               >
-                ✋ Registered
+                Registered
               </button>
               <button
                 onClick={() => handleRSVP('confirmed')}
-                className={`px-4 py-2 rounded ${
-                  userRSVP?.status === 'confirmed'
-                    ? 'bg-green-500 text-white'
-                    : 'bg-white hover:bg-green-100'
-                }`}
+                className={`btn btn-secondary text-sm ${userRSVP?.status === 'confirmed' ? 'bg-green-600 text-white hover:bg-green-700' : ''}`}
               >
-                ✅ Confirmed
+                Confirmed
               </button>
               <button
                 onClick={() => handleRSVP('declined')}
-                className={`px-4 py-2 rounded ${
-                  userRSVP?.status === 'declined'
-                    ? 'bg-red-500 text-white'
-                    : 'bg-white hover:bg-red-100'
-                }`}
+                className={`btn btn-secondary text-sm ${userRSVP?.status === 'declined' ? 'bg-red-500 text-white hover:bg-red-600' : ''}`}
               >
-                ❌ Can't Make It
+                Can't Make It
               </button>
             </div>
           </div>
