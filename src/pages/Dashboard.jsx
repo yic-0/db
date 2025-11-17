@@ -269,67 +269,62 @@ export default function Dashboard() {
 
       {/* Quick Stats */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="card-contrast gradient-border relative overflow-hidden group">
-          <div className="absolute right-2 top-2 w-20 h-20 bg-primary-100 rounded-full blur-2xl opacity-70 group-hover:opacity-90 transition" aria-hidden="true" />
-          <div className="flex items-center justify-between mb-4">
-            <div className="p-3 bg-primary-50 rounded-xl group-hover:bg-primary-100 transition-colors">
-              <Icon name="calendar" size={24} className="text-primary-600" />
+        <div className="card">
+          <div className="flex items-center justify-between mb-3">
+            <div className="p-3 bg-primary-50 rounded-xl shadow-inner">
+              <Icon name="calendar" size={22} className="text-primary-600" />
             </div>
             <span className="badge badge-primary">This week</span>
           </div>
-          <p className="text-3xl font-bold text-gray-900">
+          <div className="text-3xl font-bold text-gray-900">
             {loading ? '...' : stats.upcomingPractices}
-          </p>
+          </div>
           <p className="text-sm text-gray-600 mt-1">Upcoming practices</p>
         </div>
 
-        <div className="card-contrast gradient-border relative overflow-hidden group">
-          <div className="absolute -left-4 top-2 w-24 h-24 bg-success-100 rounded-full blur-2xl opacity-70 group-hover:opacity-90 transition" aria-hidden="true" />
-          <div className="flex items-center justify-between mb-4">
-            <div className="p-3 bg-success-50 rounded-xl group-hover:bg-success-100 transition-colors">
-              <Icon name="roster" size={24} className="text-success-600" />
+        <div className="card">
+          <div className="flex items-center justify-between mb-3">
+            <div className="p-3 bg-success-50 rounded-xl shadow-inner">
+              <Icon name="roster" size={22} className="text-success-600" />
             </div>
             <span className="badge badge-success">Active</span>
           </div>
-          <p className="text-3xl font-bold text-gray-900">
+          <div className="text-3xl font-bold text-gray-900">
             {loading ? '...' : stats.activeMembers}
-          </p>
+          </div>
           <p className="text-sm text-gray-600 mt-1">Team members</p>
         </div>
 
-        <div className="card-contrast gradient-border relative overflow-hidden group">
-          <div className="absolute right-0 bottom-0 w-28 h-28 bg-accent-100 rounded-full blur-2xl opacity-70 group-hover:opacity-90 transition" aria-hidden="true" />
-          <div className="flex items-center justify-between mb-4">
-            <div className="p-3 bg-accent-50 rounded-xl group-hover:bg-accent-100 transition-colors">
-              <Icon name="target" size={24} className="text-accent-600" />
+        <div className="card">
+          <div className="flex items-center justify-between mb-3">
+            <div className="p-3 bg-accent-50 rounded-xl shadow-inner">
+              <Icon name="target" size={22} className="text-accent-600" />
             </div>
             <span className="badge bg-accent-100 text-accent-700">30 days</span>
           </div>
-          <p className="text-3xl font-bold text-gray-900">
+          <div className="text-3xl font-bold text-gray-900">
             {loading ? '...' : `${stats.attendanceRate}%`}
-          </p>
+          </div>
           <p className="text-sm text-gray-600 mt-1">Your attendance</p>
         </div>
 
-        <div className="card-contrast gradient-border relative overflow-hidden group">
-          <div className="absolute -right-4 -top-4 w-24 h-24 bg-amber-100 rounded-full blur-2xl opacity-70 group-hover:opacity-90 transition" aria-hidden="true" />
-          <div className="flex items-center justify-between mb-4">
-            <div className="p-3 bg-amber-50 rounded-xl group-hover:bg-amber-100 transition-colors">
-              <Icon name="fire" size={24} className="text-amber-600" />
+        <div className="card">
+          <div className="flex items-center justify-between mb-3">
+            <div className="p-3 bg-amber-50 rounded-xl shadow-inner">
+              <Icon name="fire" size={22} className="text-amber-600" />
             </div>
             <span className="badge badge-warning">Streak</span>
           </div>
-          <p className="text-3xl font-bold text-gray-900">
+          <div className="text-3xl font-bold text-gray-900">
             {loading ? '...' : stats.workoutStreak}
-          </p>
+          </div>
           <p className="text-sm text-gray-600 mt-1">Day workout streak</p>
         </div>
       </div>
 
       {/* Quick Actions */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        <Link to="/practices" className="card group cursor-pointer hover:border-primary-200 relative overflow-hidden">
-          <div className="absolute right-0 top-0 w-24 h-24 bg-primary-100/60 blur-2xl opacity-80" aria-hidden="true" />
+        <Link to="/practices" className="card group cursor-pointer hover:border-primary-200">
           <div className="flex items-center gap-4">
             <div className="p-4 bg-gradient-to-br from-primary-500 to-primary-600 rounded-xl shadow-lg shadow-primary-500/25">
               <Icon name="practice" size={28} className="text-white" />
@@ -344,8 +339,7 @@ export default function Dashboard() {
           </div>
         </Link>
 
-        <Link to="/workouts" className="card group cursor-pointer hover:border-success-200 relative overflow-hidden">
-          <div className="absolute right-0 top-0 w-24 h-24 bg-success-100/60 blur-2xl opacity-80" aria-hidden="true" />
+        <Link to="/workouts" className="card group cursor-pointer hover:border-success-200">
           <div className="flex items-center gap-4">
             <div className="p-4 bg-gradient-to-br from-success-500 to-success-600 rounded-xl shadow-lg shadow-success-500/25">
               <Icon name="workouts" size={28} className="text-white" />
@@ -360,8 +354,7 @@ export default function Dashboard() {
           </div>
         </Link>
 
-        <Link to="/calendar" className="card group cursor-pointer hover:border-accent-200 relative overflow-hidden">
-          <div className="absolute right-0 top-0 w-24 h-24 bg-accent-100/60 blur-2xl opacity-80" aria-hidden="true" />
+        <Link to="/calendar" className="card group cursor-pointer hover:border-accent-200">
           <div className="flex items-center gap-4">
             <div className="p-4 bg-gradient-to-br from-accent-500 to-accent-600 rounded-xl shadow-lg shadow-accent-500/25">
               <Icon name="events" size={28} className="text-white" />
@@ -378,7 +371,7 @@ export default function Dashboard() {
       </div>
 
       {/* Activity Feed */}
-      <div className="card-contrast gradient-border">
+      <div className="card">
         <div className="flex items-center justify-between mb-6">
           <div>
             <p className="tagline text-primary-700">Pulse</p>
