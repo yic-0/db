@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd'
 import { useLineupStore } from '../store/lineupStore'
@@ -6,6 +6,7 @@ import { useRosterStore } from '../store/rosterStore'
 import { useAuthStore } from '../store/authStore'
 import { usePracticeStore } from '../store/practiceStore'
 import toast from 'react-hot-toast'
+import DragonBoatCogPanel from '../components/DragonBoatCogPanel'
 
 export default function Lineups() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -592,6 +593,63 @@ export default function Lineups() {
     return { label: 'Unbalanced', color: 'text-red-600', bg: 'bg-red-100' }
   }
 
+  // Map roster data into shape needed for COG panel
+  const getWeightKg = (athlete) => {
+    if (!athlete) return 0
+    if (typeof athlete.weight_kg === 'number') return athlete.weight_kg
+    if (typeof athlete.weightKg === 'number') return athlete.weightKg
+    if (typeof athlete.weight_lbs === 'number') return athlete.weight_lbs / 2.20462
+    if (typeof athlete.weight === 'number') return athlete.weight
+    return 0
+  }
+
+  const cogLayout = useMemo(() => {
+    // bow is negative, stern positive
+    const spacing = 1
+    const seats = []
+    // drummer at bow-most position
+    seats.push({ id: 'drummer', name: 'Drummer', x: -(boatRows + 1) * spacing })
+    for (let i = 0; i < boatRows; i++) {
+      const x = -(boatRows - i) * spacing
+      seats.push({ id: `L${i + 1}`, name: `L${i + 1}`, x, side: 'left' })
+      seats.push({ id: `R${i + 1}`, name: `R${i + 1}`, x, side: 'right' })
+    }
+    seats.push({ id: 'steer', name: 'Steer', x: spacing * 1.5 })
+    return {
+      id: `standard-${boatRows}`,
+      name: `${boatRows}-row boat`,
+      seats
+    }
+  }, [boatRows])
+
+  const cogAthletes = useMemo(() => {
+    return members.map(m => ({
+      id: m.id,
+      name: m.full_name || m.name || 'Unknown',
+      weightKg: getWeightKg(m)
+    }))
+  }, [members])
+
+  const cogLineup = useMemo(() => {
+    const assignments = []
+    const addAssignment = (seatId, member) => {
+      if (member?.id) assignments.push({ seatId, athleteId: member.id })
+    }
+    addAssignment('drummer', boatPositions.drummer)
+    for (let i = 0; i < boatRows; i++) {
+      addAssignment(`L${i + 1}`, boatPositions.left?.[i])
+      addAssignment(`R${i + 1}`, boatPositions.right?.[i])
+    }
+    addAssignment('steer', boatPositions.steersperson)
+
+    return {
+      id: currentLineup?.id || 'scratch',
+      boatLayoutId: cogLayout.id,
+      name: currentLineup?.name || lineupName || 'Lineup',
+      assignments
+    }
+  }, [boatPositions, boatRows, currentLineup, lineupName, cogLayout.id])
+
   const getRsvpBadge = (status) => {
     switch (status) {
       case 'yes':
@@ -984,8 +1042,21 @@ export default function Lineups() {
                         Alt Δ {formatWeight(balance.leftTotalSecondary - balance.rightTotalSecondary)}
                       </span>
                     </div>
-                  </div>
-                )}
+        </div>
+      )}
+
+      {/* COG & Seat Moments Panel */}
+      <div className="card mb-6">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-semibold text-gray-900">Center of Gravity & Seat Heatmap</h3>
+          <p className="text-xs text-gray-500">Uses current seat assignments; missing weights count as 0.</p>
+        </div>
+        <DragonBoatCogPanel
+          layout={cogLayout}
+          athletes={cogAthletes}
+          lineup={cogLineup}
+        />
+      </div>
             </div>
           </div>
 
