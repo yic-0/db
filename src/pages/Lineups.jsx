@@ -612,8 +612,8 @@ export default function Lineups() {
     seats.push({ id: 'drummer', name: 'Drummer', x: -(boatRows + 1) * spacing })
     for (let i = 0; i < boatRows; i++) {
       const x = -(boatRows - i) * spacing
-      seats.push({ id: `L${i + 1}`, name: `L${i + 1}`, x, side: 'left' })
-      seats.push({ id: `R${i + 1}`, name: `R${i + 1}`, x, side: 'right' })
+      seats.push({ id: `L${i + 1}`, name: `L${i + 1}`, x, side: 'port' })
+      seats.push({ id: `R${i + 1}`, name: `R${i + 1}`, x, side: 'starboard' })
     }
     seats.push({ id: 'steer', name: 'Steer', x: spacing * 1.5 })
     return {
