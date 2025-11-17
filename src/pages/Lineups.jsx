@@ -555,6 +555,9 @@ export default function Lineups() {
   const formatWeight = (kgValue, digits = 1) => `${(kgValue * weightFactor).toFixed(digits)} ${unitLabel}`
 
   // Seat-by-seat weight heatmap (left row + right row)
+  const drummerHeatWeight = boatPositions.drummer?.weight_kg || 0
+  const steersHeatWeight = boatPositions.steersperson?.weight_kg || 0
+
   const leftWeights = boatPositions.left.map(m => m?.weight_kg || 0)
   const rightWeights = boatPositions.right.map(m => m?.weight_kg || 0)
   const altLeftWeights = boatPositions.left.map((m, idx) =>
@@ -563,8 +566,14 @@ export default function Lineups() {
   const altRightWeights = boatPositions.right.map((m, idx) =>
     (m?.weight_kg || 0) + (boatPositions.right_secondary?.[idx]?.weight_kg || 0)
   )
+  const altDrummerHeatWeight = drummerHeatWeight + (boatPositions.drummer_secondary?.weight_kg || 0)
+  const altSteersHeatWeight = steersHeatWeight + (boatPositions.steersperson_secondary?.weight_kg || 0)
   const maxSeat = Math.max(
     1,
+    drummerHeatWeight,
+    steersHeatWeight,
+    altDrummerHeatWeight,
+    altSteersHeatWeight,
     ...leftWeights,
     ...rightWeights,
     ...(altLeftWeights || []),
@@ -1002,6 +1011,26 @@ export default function Lineups() {
               ))}
             </div>
 
+            {/* Drummer / Steers heat blocks */}
+            <div className="mt-2">
+              <div className="flex justify-between text-[11px] text-gray-600 mb-1">
+                <span>Drummer & Steersperson</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 h-4">
+                {[{ label: 'Drummer', weight: drummerHeatWeight }, { label: 'Steer', weight: steersHeatWeight }].map(pos => (
+                  <div key={pos.label} className="relative rounded-full overflow-hidden bg-gray-100 border border-gray-200">
+                    <div
+                      className="absolute inset-0 bg-rose-500"
+                      style={{ opacity: Math.min(1, pos.weight / maxSeat) }}
+                    />
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <span className="text-[11px] font-semibold text-white drop-shadow-sm">{pos.label}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             {balance.hasSecondary && balance.totalWeightSecondary > 0 && (
               <div className="space-y-1">
                 <div className="grid grid-cols-10 gap-1 h-3">
@@ -1021,6 +1050,20 @@ export default function Lineups() {
                         className="absolute inset-0 bg-rose-400"
                         style={{ opacity: Math.min(1, w / maxSeat) }}
                       />
+                    </div>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 h-3 mt-1">
+                  {[{ label: 'Drummer (alt)', weight: altDrummerHeatWeight }, { label: 'Steer (alt)', weight: altSteersHeatWeight }].map(pos => (
+                    <div key={pos.label} className="relative rounded-full overflow-hidden bg-gray-100 border border-gray-200">
+                      <div
+                        className="absolute inset-0 bg-rose-400"
+                        style={{ opacity: Math.min(1, pos.weight / maxSeat) }}
+                      />
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <span className="text-[10px] font-semibold text-white drop-shadow-sm">{pos.label}</span>
+                      </div>
                     </div>
                   ))}
                 </div>
