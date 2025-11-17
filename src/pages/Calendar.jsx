@@ -40,6 +40,7 @@ export default function Calendar() {
   const [selectedRace, setSelectedRace] = useState(null)
   const [selectedDate, setSelectedDate] = useState(null)
   const [quickAddType, setQuickAddType] = useState('practice')
+  const [quickAddRaceStatus, setQuickAddRaceStatus] = useState('prospective') // 'prospective' | 'confirmed'
   const [editingEvent, setEditingEvent] = useState(null)
   const [editForm, setEditForm] = useState({
     title: '',
@@ -406,35 +407,33 @@ export default function Calendar() {
       // Workout assignments require additional database setup
       toast.success('Workout reminder added! Members can log their workouts in the Workouts section.')
       result = { success: true }
-    } else if (quickAddType === 'prospective_race') {
-      if (!quickAddForm.title) {
-        toast.error('Race name is required')
-        return
-      }
-      result = await createProspectiveRace({
-        name: quickAddForm.title,
-        race_date: quickAddForm.date,
-        location: quickAddForm.location || null,
-        description: quickAddForm.description || null,
-        status: 'prospective',
-        created_by: user.id,
-        is_visible_to_members: true
-      })
     } else if (quickAddType === 'race') {
       if (!quickAddForm.title) {
         toast.error('Race name is required')
         return
       }
-      result = await createConfirmedRace({
-        name: quickAddForm.title,
-        race_date: quickAddForm.date,
-        location: quickAddForm.location || null,
-        description: quickAddForm.description || null,
-        race_start_time: quickAddForm.start_time || null,
-        race_end_time: quickAddForm.end_time || null,
-        created_by: user.id,
-        is_visible_to_members: true
-      })
+      if (quickAddRaceStatus === 'prospective') {
+        result = await createProspectiveRace({
+          name: quickAddForm.title,
+          race_date: quickAddForm.date,
+          location: quickAddForm.location || null,
+          description: quickAddForm.description || null,
+          status: 'prospective',
+          created_by: user.id,
+          is_visible_to_members: true
+        })
+      } else {
+        result = await createConfirmedRace({
+          name: quickAddForm.title,
+          race_date: quickAddForm.date,
+          location: quickAddForm.location || null,
+          description: quickAddForm.description || null,
+          race_start_time: quickAddForm.start_time || null,
+          race_end_time: quickAddForm.end_time || null,
+          created_by: user.id,
+          is_visible_to_members: true
+        })
+      }
     }
 
     if (result.success) {
@@ -455,6 +454,7 @@ export default function Calendar() {
       duration: 30
     })
     setQuickAddType('practice')
+    setQuickAddRaceStatus('prospective')
   }
 
   const openQuickAddModal = (date = null) => {
@@ -1756,7 +1756,7 @@ export default function Calendar() {
               {/* Event Type Selector */}
               <div className="mb-6">
                 <label className="label">Event Type</label>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   <button
                     type="button"
                     onClick={() => setQuickAddType('practice')}
@@ -1783,18 +1783,6 @@ export default function Calendar() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setQuickAddType('prospective_race')}
-                    className={`p-3 rounded-xl border-2 transition-all ${
-                      quickAddType === 'prospective_race'
-                        ? 'border-orange-500 bg-orange-50 text-orange-700'
-                        : 'border-gray-200 hover:border-gray-300'
-                    }`}
-                  >
-                    <Icon name="calendar" size={24} className={quickAddType === 'prospective_race' ? 'text-orange-600' : 'text-gray-500'} />
-                    <div className="text-sm font-medium mt-1">Prospective Race</div>
-                  </button>
-                  <button
-                    type="button"
                     onClick={() => setQuickAddType('race')}
                     className={`p-3 rounded-xl border-2 transition-all ${
                       quickAddType === 'race'
@@ -1807,6 +1795,28 @@ export default function Calendar() {
                   </button>
                 </div>
               </div>
+
+              {quickAddType === 'race' && (
+                <div className="mb-4">
+                  <label className="label">Race Status</label>
+                  <div className="inline-flex rounded-full border border-accent-200 bg-accent-50 p-1 text-sm">
+                    <button
+                      type="button"
+                      onClick={() => setQuickAddRaceStatus('prospective')}
+                      className={`px-3 py-1 rounded-full transition ${quickAddRaceStatus === 'prospective' ? 'bg-orange-500 text-white shadow-sm' : 'text-orange-700 hover:bg-orange-100'}`}
+                    >
+                      Prospective
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setQuickAddRaceStatus('confirmed')}
+                      className={`px-3 py-1 rounded-full transition ${quickAddRaceStatus === 'confirmed' ? 'bg-accent-600 text-white shadow-sm' : 'text-accent-700 hover:bg-accent-100'}`}
+                    >
+                      Confirmed
+                    </button>
+                  </div>
+                </div>
+              )}
 
               <form onSubmit={handleQuickAdd} className="space-y-4">
                 <div>
@@ -1823,8 +1833,8 @@ export default function Calendar() {
                         ? 'e.g., Morning Practice'
                         : quickAddType === 'workout'
                         ? 'e.g., Core Strength Workout'
-                        : quickAddType === 'prospective_race'
-                        ? 'e.g., Summer Festival (considering)'
+                        : quickAddRaceStatus === 'prospective'
+                        ? 'e.g., Summer Festival (prospective)'
                         : 'e.g., Dragon Boat Festival'
                     }
                     required
@@ -1842,7 +1852,7 @@ export default function Calendar() {
                   />
                 </div>
 
-                {quickAddType !== 'workout' && quickAddType !== 'prospective_race' && (
+                {quickAddType !== 'workout' && (
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="label">Start Time {quickAddType === 'practice' && '*'}</label>
@@ -1897,7 +1907,7 @@ export default function Calendar() {
                   </>
                 )}
 
-                {(quickAddType === 'practice' || quickAddType === 'race' || quickAddType === 'prospective_race') && (
+                {(quickAddType === 'practice' || quickAddType === 'race') && (
                   <div>
                     <label className="label">Location</label>
                     <input
@@ -1939,12 +1949,12 @@ export default function Calendar() {
                         ? 'btn-primary'
                         : quickAddType === 'workout'
                         ? 'btn-success'
-                        : quickAddType === 'prospective_race'
+                        : quickAddRaceStatus === 'prospective'
                         ? 'bg-orange-600 text-white hover:bg-orange-700'
                         : 'btn-accent'
                     }`}
                   >
-                    Create {quickAddType === 'practice' ? 'Practice' : quickAddType === 'workout' ? 'Workout' : quickAddType === 'prospective_race' ? 'Prospective Race' : 'Confirmed Race'}
+                    Create {quickAddType === 'practice' ? 'Practice' : quickAddType === 'workout' ? 'Workout' : quickAddRaceStatus === 'prospective' ? 'Prospective Race' : 'Confirmed Race'}
                   </button>
                 </div>
               </form>
