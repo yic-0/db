@@ -323,5 +323,279 @@ export const usePracticeStore = create((set, get) => ({
       toast.error(error.message)
       return { success: false, error }
     }
+  },
+
+  // Create a recurring practice series
+  createRecurringPractice: async (practiceData, recurrenceOptions) => {
+    try {
+      const { pattern, days, endDate, count } = recurrenceOptions
+
+      // Create the parent recurring practice
+      const parentData = {
+        ...practiceData,
+        is_recurring: true,
+        recurrence_pattern: pattern,
+        recurrence_days: days || null,
+        recurrence_end_date: endDate || null,
+        recurrence_count: count || null
+      }
+
+      const { data: parentPractice, error: parentError } = await supabase
+        .from('practices')
+        .insert([parentData])
+        .select()
+        .single()
+
+      if (parentError) throw parentError
+
+      // Generate instances based on recurrence pattern
+      const instances = get().generateRecurrenceInstances(parentPractice, recurrenceOptions)
+
+      if (instances.length > 0) {
+        const { error: instancesError } = await supabase
+          .from('practices')
+          .insert(instances)
+
+        if (instancesError) throw instancesError
+      }
+
+      await get().fetchPractices()
+      toast.success(`Recurring practice created with ${instances.length} instances!`)
+      return { success: true, data: parentPractice, instanceCount: instances.length }
+    } catch (error) {
+      console.error('Error creating recurring practice:', error)
+      toast.error(error.message)
+      return { success: false, error }
+    }
+  },
+
+  // Generate individual practice instances from a recurring pattern
+  generateRecurrenceInstances: (parentPractice, options) => {
+    const { pattern, days, endDate, count } = options
+    const instances = []
+    const startDate = new Date(parentPractice.date)
+    const maxInstances = count || 52 // Default max 52 instances (1 year of weekly)
+    const endDateObj = endDate ? new Date(endDate) : null
+
+    let currentDate = new Date(startDate)
+    let instanceCount = 0
+
+    // Helper to check if a date matches the pattern
+    const shouldAddDate = (date) => {
+      if (pattern === 'daily') return true
+      if (pattern === 'weekly' || pattern === 'biweekly') {
+        return days && days.includes(date.getDay())
+      }
+      if (pattern === 'monthly') {
+        return date.getDate() === startDate.getDate()
+      }
+      return false
+    }
+
+    // Helper to advance date based on pattern
+    const advanceDate = (date, skipWeeks = false) => {
+      if (pattern === 'daily') {
+        date.setDate(date.getDate() + 1)
+      } else if (pattern === 'weekly') {
+        if (skipWeeks) {
+          // Move to next week's first selected day
+          date.setDate(date.getDate() + 7)
+          while (!shouldAddDate(date)) {
+            date.setDate(date.getDate() + 1)
+          }
+        } else {
+          date.setDate(date.getDate() + 1)
+        }
+      } else if (pattern === 'biweekly') {
+        if (skipWeeks) {
+          date.setDate(date.getDate() + 14)
+          while (!shouldAddDate(date)) {
+            date.setDate(date.getDate() + 1)
+          }
+        } else {
+          date.setDate(date.getDate() + 1)
+        }
+      } else if (pattern === 'monthly') {
+        date.setMonth(date.getMonth() + 1)
+      }
+    }
+
+    // For weekly/biweekly, we need to track which week we're in
+    let weekStartDate = new Date(startDate)
+    weekStartDate.setDate(weekStartDate.getDate() - weekStartDate.getDay()) // Start of week
+
+    // Skip the first date (it's the parent)
+    advanceDate(currentDate)
+
+    while (instanceCount < maxInstances) {
+      // Check end date
+      if (endDateObj && currentDate > endDateObj) break
+
+      // For weekly/biweekly, check if we're in a valid week
+      if (pattern === 'biweekly') {
+        const weeksDiff = Math.floor((currentDate - weekStartDate) / (7 * 24 * 60 * 60 * 1000))
+        if (weeksDiff % 2 !== 0) {
+          // Skip this week entirely for biweekly
+          currentDate.setDate(currentDate.getDate() + (7 - currentDate.getDay()))
+          continue
+        }
+      }
+
+      if (shouldAddDate(currentDate)) {
+        const instance = {
+          title: parentPractice.title,
+          description: parentPractice.description,
+          practice_type: parentPractice.practice_type,
+          date: currentDate.toISOString().split('T')[0],
+          start_time: parentPractice.start_time,
+          end_time: parentPractice.end_time,
+          location_name: parentPractice.location_name,
+          location_address: parentPractice.location_address,
+          location_lat: parentPractice.location_lat,
+          location_lng: parentPractice.location_lng,
+          max_capacity: parentPractice.max_capacity,
+          status: 'scheduled',
+          rsvp_deadline: parentPractice.rsvp_deadline,
+          created_by: parentPractice.created_by,
+          parent_practice_id: parentPractice.id,
+          is_exception: false,
+          original_date: currentDate.toISOString().split('T')[0]
+        }
+        instances.push(instance)
+        instanceCount++
+      }
+
+      advanceDate(currentDate)
+
+      // Safety check to prevent infinite loops
+      if (currentDate > new Date(startDate.getTime() + 365 * 2 * 24 * 60 * 60 * 1000)) {
+        break // Max 2 years out
+      }
+    }
+
+    return instances
+  },
+
+  // Update a single instance (marks as exception)
+  updateSingleInstance: async (id, updates) => {
+    try {
+      const { data, error } = await supabase
+        .from('practices')
+        .update({
+          ...updates,
+          is_exception: true
+        })
+        .eq('id', id)
+        .select()
+        .single()
+
+      if (error) throw error
+
+      set((state) => ({
+        practices: state.practices.map((p) =>
+          p.id === id ? data : p
+        )
+      }))
+
+      toast.success('This practice instance updated!')
+      return { success: true }
+    } catch (error) {
+      console.error('Error updating practice instance:', error)
+      toast.error(error.message)
+      return { success: false, error }
+    }
+  },
+
+  // Update entire series (parent + all future non-exception instances)
+  updateEntireSeries: async (parentId, updates) => {
+    try {
+      // Update parent practice
+      const { error: parentError } = await supabase
+        .from('practices')
+        .update(updates)
+        .eq('id', parentId)
+
+      if (parentError) throw parentError
+
+      // Update all future non-exception instances
+      const today = new Date().toISOString().split('T')[0]
+      const { error: instancesError } = await supabase
+        .from('practices')
+        .update(updates)
+        .eq('parent_practice_id', parentId)
+        .eq('is_exception', false)
+        .gte('date', today)
+
+      if (instancesError) throw instancesError
+
+      await get().fetchPractices()
+      toast.success('Entire series updated!')
+      return { success: true }
+    } catch (error) {
+      console.error('Error updating series:', error)
+      toast.error(error.message)
+      return { success: false, error }
+    }
+  },
+
+  // Delete a single instance
+  deleteSingleInstance: async (id) => {
+    try {
+      const { error } = await supabase
+        .from('practices')
+        .delete()
+        .eq('id', id)
+
+      if (error) throw error
+
+      set((state) => ({
+        practices: state.practices.filter((p) => p.id !== id)
+      }))
+
+      toast.success('Practice instance deleted!')
+      return { success: true }
+    } catch (error) {
+      console.error('Error deleting practice instance:', error)
+      toast.error(error.message)
+      return { success: false, error }
+    }
+  },
+
+  // Delete entire series (parent + all instances)
+  deleteEntireSeries: async (parentId) => {
+    try {
+      // Deleting parent will cascade delete all instances due to FK constraint
+      const { error } = await supabase
+        .from('practices')
+        .delete()
+        .eq('id', parentId)
+
+      if (error) throw error
+
+      set((state) => ({
+        practices: state.practices.filter((p) =>
+          p.id !== parentId && p.parent_practice_id !== parentId
+        )
+      }))
+
+      toast.success('Entire series deleted!')
+      return { success: true }
+    } catch (error) {
+      console.error('Error deleting series:', error)
+      toast.error(error.message)
+      return { success: false, error }
+    }
+  },
+
+  // Get parent practice for an instance
+  getParentPractice: (instanceId) => {
+    const instance = get().practices.find(p => p.id === instanceId)
+    if (!instance || !instance.parent_practice_id) return null
+    return get().practices.find(p => p.id === instance.parent_practice_id)
+  },
+
+  // Get all instances of a recurring series
+  getSeriesInstances: (parentId) => {
+    return get().practices.filter(p => p.parent_practice_id === parentId)
   }
 }))

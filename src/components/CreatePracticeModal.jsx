@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { usePracticeStore } from '../store/practiceStore'
 import { useAuthStore } from '../store/authStore'
+import { addMonths, format } from 'date-fns'
 
 export default function CreatePracticeModal({ isOpen, onClose }) {
-  const { createPractice } = usePracticeStore()
+  const { createPractice, createRecurringPractice } = usePracticeStore()
   const { user } = useAuthStore()
 
   const [formData, setFormData] = useState({
@@ -18,6 +19,17 @@ export default function CreatePracticeModal({ isOpen, onClose }) {
     max_capacity: 22,
   })
 
+  // Recurrence state
+  const [isRecurring, setIsRecurring] = useState(false)
+  const [recurrencePattern, setRecurrencePattern] = useState('weekly')
+  const [recurrenceDays, setRecurrenceDays] = useState([]) // 0=Sun, 1=Mon, etc.
+  const [recurrenceEndType, setRecurrenceEndType] = useState('date') // 'date' or 'count'
+  const [recurrenceEndDate, setRecurrenceEndDate] = useState('')
+  const [recurrenceCount, setRecurrenceCount] = useState(10)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
   const handleChange = (e) => {
     setFormData({
       ...formData,
@@ -25,28 +37,85 @@ export default function CreatePracticeModal({ isOpen, onClose }) {
     })
   }
 
+  const handleDayToggle = (dayIndex) => {
+    setRecurrenceDays(prev =>
+      prev.includes(dayIndex)
+        ? prev.filter(d => d !== dayIndex)
+        : [...prev, dayIndex].sort((a, b) => a - b)
+    )
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
+    setIsSubmitting(true)
 
-    const result = await createPractice({
-      ...formData,
-      created_by: user?.id,
-    })
+    try {
+      let result
 
-    if (result.success) {
-      // Reset form
-      setFormData({
-        title: '',
-        description: '',
-        practice_type: 'water',
-        date: '',
-        start_time: '',
-        end_time: '',
-        location_name: '',
-        location_address: '',
-        max_capacity: 22,
-      })
-      onClose()
+      if (isRecurring) {
+        // Validate recurrence settings
+        if ((recurrencePattern === 'weekly' || recurrencePattern === 'biweekly') && recurrenceDays.length === 0) {
+          alert('Please select at least one day for weekly/biweekly recurrence')
+          setIsSubmitting(false)
+          return
+        }
+
+        const recurrenceOptions = {
+          pattern: recurrencePattern,
+          days: recurrenceDays.length > 0 ? recurrenceDays : null,
+          endDate: recurrenceEndType === 'date' ? recurrenceEndDate : null,
+          count: recurrenceEndType === 'count' ? recurrenceCount : null
+        }
+
+        result = await createRecurringPractice(
+          {
+            ...formData,
+            created_by: user?.id,
+          },
+          recurrenceOptions
+        )
+      } else {
+        result = await createPractice({
+          ...formData,
+          created_by: user?.id,
+        })
+      }
+
+      if (result.success) {
+        // Reset form
+        setFormData({
+          title: '',
+          description: '',
+          practice_type: 'water',
+          date: '',
+          start_time: '',
+          end_time: '',
+          location_name: '',
+          location_address: '',
+          max_capacity: 22,
+        })
+        setIsRecurring(false)
+        setRecurrencePattern('weekly')
+        setRecurrenceDays([])
+        setRecurrenceEndType('date')
+        setRecurrenceEndDate('')
+        setRecurrenceCount(10)
+        onClose()
+      }
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  // Auto-set default end date when date is selected
+  const handleDateChange = (e) => {
+    const newDate = e.target.value
+    setFormData({ ...formData, date: newDate })
+
+    // Set default recurrence end date to 3 months from start
+    if (newDate && !recurrenceEndDate) {
+      const defaultEnd = addMonths(new Date(newDate), 3)
+      setRecurrenceEndDate(format(defaultEnd, 'yyyy-MM-dd'))
     }
   }
 
@@ -124,7 +193,7 @@ export default function CreatePracticeModal({ isOpen, onClose }) {
             <div className="grid grid-cols-3 gap-4">
               <div>
                 <label htmlFor="date" className="label">
-                  Date *
+                  {isRecurring ? 'Start Date *' : 'Date *'}
                 </label>
                 <input
                   id="date"
@@ -133,7 +202,7 @@ export default function CreatePracticeModal({ isOpen, onClose }) {
                   required
                   className="input"
                   value={formData.date}
-                  onChange={handleChange}
+                  onChange={handleDateChange}
                 />
               </div>
 
@@ -165,6 +234,126 @@ export default function CreatePracticeModal({ isOpen, onClose }) {
                   onChange={handleChange}
                 />
               </div>
+            </div>
+
+            {/* Recurrence Options */}
+            <div className="border-t pt-4">
+              <label className="flex items-center gap-2 cursor-pointer mb-4">
+                <input
+                  type="checkbox"
+                  checked={isRecurring}
+                  onChange={(e) => setIsRecurring(e.target.checked)}
+                  className="w-4 h-4 text-primary-600 rounded focus:ring-primary-500"
+                />
+                <span className="font-medium text-gray-900">Make this a recurring practice</span>
+              </label>
+
+              {isRecurring && (
+                <div className="bg-blue-50 p-4 rounded-lg space-y-4">
+                  {/* Pattern Selection */}
+                  <div>
+                    <label className="label">Repeat Pattern</label>
+                    <select
+                      value={recurrencePattern}
+                      onChange={(e) => setRecurrencePattern(e.target.value)}
+                      className="input"
+                    >
+                      <option value="daily">Daily</option>
+                      <option value="weekly">Weekly</option>
+                      <option value="biweekly">Every 2 Weeks</option>
+                      <option value="monthly">Monthly</option>
+                    </select>
+                  </div>
+
+                  {/* Day Selection for Weekly/Biweekly */}
+                  {(recurrencePattern === 'weekly' || recurrencePattern === 'biweekly') && (
+                    <div>
+                      <label className="label">Repeat On</label>
+                      <div className="flex gap-2 flex-wrap">
+                        {dayNames.map((day, index) => (
+                          <button
+                            key={day}
+                            type="button"
+                            onClick={() => handleDayToggle(index)}
+                            className={`px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                              recurrenceDays.includes(index)
+                                ? 'bg-primary-600 text-white border-primary-600'
+                                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                            }`}
+                          >
+                            {day}
+                          </button>
+                        ))}
+                      </div>
+                      {recurrenceDays.length === 0 && (
+                        <p className="text-xs text-red-600 mt-1">Please select at least one day</p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* End Type Selection */}
+                  <div>
+                    <label className="label">End Recurrence</label>
+                    <div className="space-y-3">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="recurrenceEndType"
+                          value="date"
+                          checked={recurrenceEndType === 'date'}
+                          onChange={(e) => setRecurrenceEndType(e.target.value)}
+                          className="text-primary-600 focus:ring-primary-500"
+                        />
+                        <span className="text-sm text-gray-700">On date:</span>
+                        <input
+                          type="date"
+                          value={recurrenceEndDate}
+                          onChange={(e) => setRecurrenceEndDate(e.target.value)}
+                          disabled={recurrenceEndType !== 'date'}
+                          className="input text-sm py-1"
+                          min={formData.date}
+                        />
+                      </label>
+
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="recurrenceEndType"
+                          value="count"
+                          checked={recurrenceEndType === 'count'}
+                          onChange={(e) => setRecurrenceEndType(e.target.value)}
+                          className="text-primary-600 focus:ring-primary-500"
+                        />
+                        <span className="text-sm text-gray-700">After</span>
+                        <input
+                          type="number"
+                          value={recurrenceCount}
+                          onChange={(e) => setRecurrenceCount(parseInt(e.target.value) || 1)}
+                          disabled={recurrenceEndType !== 'count'}
+                          min="1"
+                          max="52"
+                          className="input w-20 text-sm py-1"
+                        />
+                        <span className="text-sm text-gray-700">occurrences</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Preview */}
+                  <div className="bg-white p-3 rounded border border-blue-200">
+                    <p className="text-xs font-medium text-blue-800">
+                      {recurrencePattern === 'daily' && 'Creates daily practices'}
+                      {recurrencePattern === 'weekly' && recurrenceDays.length > 0 &&
+                        `Creates practices every ${recurrenceDays.map(d => dayNames[d]).join(', ')}`}
+                      {recurrencePattern === 'biweekly' && recurrenceDays.length > 0 &&
+                        `Creates practices every other week on ${recurrenceDays.map(d => dayNames[d]).join(', ')}`}
+                      {recurrencePattern === 'monthly' && 'Creates monthly practices on the same date'}
+                      {recurrenceEndType === 'date' && recurrenceEndDate && ` until ${recurrenceEndDate}`}
+                      {recurrenceEndType === 'count' && ` for ${recurrenceCount} occurrences`}
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Location */}
@@ -224,11 +413,20 @@ export default function CreatePracticeModal({ isOpen, onClose }) {
                 type="button"
                 onClick={onClose}
                 className="btn btn-secondary"
+                disabled={isSubmitting}
               >
                 Cancel
               </button>
-              <button type="submit" className="btn btn-primary">
-                Create Practice
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={isSubmitting}
+              >
+                {isSubmitting
+                  ? 'Creating...'
+                  : isRecurring
+                    ? 'Create Recurring Series'
+                    : 'Create Practice'}
               </button>
             </div>
           </form>

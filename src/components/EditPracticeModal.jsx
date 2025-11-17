@@ -4,7 +4,7 @@ import { usePracticeStore } from '../store/practiceStore'
 import { useAuthStore } from '../store/authStore'
 
 export default function EditPracticeModal({ isOpen, onClose, practice }) {
-  const { updatePractice } = usePracticeStore()
+  const { updatePractice, updateSingleInstance, updateEntireSeries, getParentPractice } = usePracticeStore()
   const { user } = useAuthStore()
 
   const [formData, setFormData] = useState({
@@ -20,6 +20,12 @@ export default function EditPracticeModal({ isOpen, onClose, practice }) {
     status: 'scheduled',
   })
   const [initialData, setInitialData] = useState(null)
+  const [showSeriesChoice, setShowSeriesChoice] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Check if this practice is part of a recurring series
+  const isPartOfSeries = practice?.parent_practice_id || practice?.is_recurring
+  const isRecurringParent = practice?.is_recurring === true
 
   // Populate form when practice changes
   useEffect(() => {
@@ -38,6 +44,7 @@ export default function EditPracticeModal({ isOpen, onClose, practice }) {
       }
       setFormData(nextData)
       setInitialData(nextData)
+      setShowSeriesChoice(false)
     }
   }, [practice])
 
@@ -66,25 +73,123 @@ export default function EditPracticeModal({ isOpen, onClose, practice }) {
       return
     }
 
-    console.log('Submitting practice update:', practice.id, formData)
-    const result = await updatePractice(practice.id, formData)
-    console.log('Update result:', result)
+    // If this is part of a series and we haven't shown the choice yet, show it
+    if (isPartOfSeries && !showSeriesChoice) {
+      setShowSeriesChoice(true)
+      return
+    }
 
-    if (result.success) {
-      onClose()
-    } else {
-      console.error('Failed to update practice:', result.error)
+    // Otherwise proceed with regular update
+    await performUpdate('single')
+  }
+
+  const performUpdate = async (updateType) => {
+    setIsSubmitting(true)
+
+    try {
+      let result
+
+      if (updateType === 'single') {
+        // Update only this instance
+        if (practice.parent_practice_id) {
+          // This is a child instance - mark as exception
+          result = await updateSingleInstance(practice.id, formData)
+        } else {
+          // Regular practice or parent practice (update just itself)
+          result = await updatePractice(practice.id, formData)
+        }
+      } else if (updateType === 'series') {
+        // Update entire series
+        const parentId = practice.parent_practice_id || practice.id
+        // For series update, don't change the date (each instance keeps its own date)
+        const seriesUpdates = { ...formData }
+        delete seriesUpdates.date // Don't update individual dates for series
+        result = await updateEntireSeries(parentId, seriesUpdates)
+      }
+
+      if (result?.success) {
+        setShowSeriesChoice(false)
+        onClose()
+      } else {
+        console.error('Failed to update practice:', result?.error)
+      }
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
   if (!isOpen || !practice) return null
+
+  // Show series choice dialog
+  if (showSeriesChoice && isPartOfSeries) {
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+          <div className="p-6">
+            <h2 className="text-xl font-bold text-gray-900 mb-4">Edit Recurring Practice</h2>
+            <p className="text-gray-600 mb-6">
+              This practice is part of a recurring series. How would you like to apply your changes?
+            </p>
+
+            {practice.is_exception && (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
+                <p className="text-sm text-yellow-800">
+                  <strong>Note:</strong> This instance was already modified from the series.
+                </p>
+              </div>
+            )}
+
+            <div className="space-y-3">
+              <button
+                onClick={() => performUpdate('single')}
+                disabled={isSubmitting}
+                className="w-full btn btn-secondary text-left flex flex-col items-start py-3"
+              >
+                <span className="font-semibold">This practice only</span>
+                <span className="text-xs text-gray-500">
+                  Only update this specific date. Other practices in the series won't change.
+                </span>
+              </button>
+
+              <button
+                onClick={() => performUpdate('series')}
+                disabled={isSubmitting}
+                className="w-full btn btn-primary text-left flex flex-col items-start py-3"
+              >
+                <span className="font-semibold">All future practices in series</span>
+                <span className="text-xs text-white/80">
+                  Update this and all future unmodified practices in the series (except dates).
+                </span>
+              </button>
+            </div>
+
+            <button
+              onClick={() => setShowSeriesChoice(false)}
+              disabled={isSubmitting}
+              className="w-full mt-4 text-gray-500 hover:text-gray-700 text-sm"
+            >
+              Back to editing
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
         <div className="p-6">
           <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold text-gray-900">Edit Practice</h2>
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900">Edit Practice</h2>
+              {isPartOfSeries && (
+                <p className="text-sm text-blue-600 mt-1">
+                  This practice is part of a recurring series
+                  {practice.is_exception && ' (modified from series)'}
+                </p>
+              )}
+            </div>
             <button
               onClick={onClose}
               className="text-gray-400 hover:text-gray-600 text-2xl"
@@ -270,11 +375,16 @@ export default function EditPracticeModal({ isOpen, onClose, practice }) {
                 type="button"
                 onClick={onClose}
                 className="btn btn-secondary"
+                disabled={isSubmitting}
               >
                 Cancel
               </button>
-              <button type="submit" className="btn btn-primary">
-                Save Changes
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? 'Saving...' : 'Save Changes'}
               </button>
             </div>
           </form>
