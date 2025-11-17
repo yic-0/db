@@ -7,6 +7,7 @@ export default function Login() {
   const { user, signIn, signUp } = useAuthStore()
 
   const [isSignUp, setIsSignUp] = useState(false)
+  const [roleView, setRoleView] = useState('member') // 'member' | 'coach'
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -50,8 +51,31 @@ export default function Login() {
             Dragon Boat Team Manager
           </h1>
           <p className="text-gray-600">
-            {isSignUp ? 'Create your account' : 'Sign in to your account'}
+            {isSignUp
+              ? roleView === 'coach'
+                ? 'Coaches/Admins: create your credentials'
+                : 'Paddlers: create your account'
+              : roleView === 'coach'
+                ? 'Coaches/Admins: sign in to manage the team'
+                : 'Members: sign in to view schedules and workouts'}
           </p>
+
+          <div className="mt-4 inline-flex rounded-full border border-primary-200 bg-primary-50 p-1 text-sm">
+            <button
+              type="button"
+              onClick={() => setRoleView('member')}
+              className={`px-3 py-1 rounded-full transition ${roleView === 'member' ? 'bg-primary-600 text-white shadow-sm' : 'text-primary-700 hover:bg-primary-100'}`}
+            >
+              Member
+            </button>
+            <button
+              type="button"
+              onClick={() => setRoleView('coach')}
+              className={`px-3 py-1 rounded-full transition ${roleView === 'coach' ? 'bg-primary-600 text-white shadow-sm' : 'text-primary-700 hover:bg-primary-100'}`}
+            >
+              Coach/Admin
+            </button>
+          </div>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
