@@ -1052,7 +1052,7 @@ export default function Lineups() {
           <h3 className="font-semibold text-gray-900">Center of Gravity, Seat Heatmap & Port/Starboard Balance</h3>
           <p className="text-xs text-gray-500">Uses current seat assignments; missing weights count as 0.</p>
         </div>
-        <div className="grid md:grid-cols-2 gap-4">
+        <div className="space-y-4">
           <DragonBoatCogPanel
             layout={cogLayout}
             athletes={cogAthletes}
