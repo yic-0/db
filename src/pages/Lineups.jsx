@@ -580,6 +580,11 @@ export default function Lineups() {
     ...(altRightWeights || [])
   )
 
+  const pillStyle = (weight, isAlt = false) => ({
+    writingMode: 'vertical-rl',
+    backgroundColor: `rgba(${isAlt ? '251, 113, 133' : '244, 63, 94'}, ${Math.max(0.15, Math.min(1, weight / maxSeat))})`
+  })
+
   const getBalanceStatus = (balancePercent) => {
     if (balancePercent < 3) return { label: 'Excellent', color: 'text-green-600', bg: 'bg-green-100' }
     if (balancePercent < 5) return { label: 'Good', color: 'text-blue-600', bg: 'bg-blue-100' }
@@ -992,7 +997,7 @@ export default function Lineups() {
             </div>
             <div className="space-y-1">
               <div className="flex items-center gap-2">
-                <span className="text-[10px] px-2 py-1 rounded-full bg-gray-800 text-white flex items-center justify-center" style={{ writingMode: 'vertical-rl' }}>
+                <span className="text-[10px] px-2 py-1 rounded-full text-white flex items-center justify-center" style={pillStyle(drummerHeatWeight)}>
                   Drummer
                 </span>
                 <div className="flex-1 space-y-1">
@@ -1017,7 +1022,7 @@ export default function Lineups() {
                     ))}
                   </div>
                 </div>
-                <span className="text-[10px] px-2 py-1 rounded-full bg-gray-800 text-white flex items-center justify-center" style={{ writingMode: 'vertical-rl' }}>
+                <span className="text-[10px] px-2 py-1 rounded-full text-white flex items-center justify-center" style={pillStyle(steersHeatWeight)}>
                   Steerer
                 </span>
               </div>
@@ -1046,7 +1051,7 @@ export default function Lineups() {
             {balance.hasSecondary && balance.totalWeightSecondary > 0 && (
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] px-2 py-1 rounded-full bg-gray-700 text-white flex items-center justify-center" style={{ writingMode: 'vertical-rl' }}>
+                  <span className="text-[10px] px-2 py-1 rounded-full text-white flex items-center justify-center" style={pillStyle(altDrummerHeatWeight, true)}>
                     Drummer
                   </span>
                   <div className="flex-1 space-y-1">
@@ -1071,7 +1076,7 @@ export default function Lineups() {
                       ))}
                     </div>
                   </div>
-                  <span className="text-[10px] px-2 py-1 rounded-full bg-gray-700 text-white flex items-center justify-center" style={{ writingMode: 'vertical-rl' }}>
+                  <span className="text-[10px] px-2 py-1 rounded-full text-white flex items-center justify-center" style={pillStyle(altSteersHeatWeight, true)}>
                     Steerer
                   </span>
                 </div>
