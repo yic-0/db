@@ -302,7 +302,7 @@ export default function Workouts() {
             </div>
           </div>
 
-          <div className="card bg-gradient-to-br from-green-50 to-green-100">
+          <div className="card">
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-sm text-gray-600 mb-1">Total Workouts</div>
@@ -315,7 +315,7 @@ export default function Workouts() {
             </div>
           </div>
 
-          <div className="card bg-gradient-to-br from-purple-50 to-purple-100">
+          <div className="card">
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-sm text-gray-600 mb-1">Total Duration</div>
@@ -328,7 +328,7 @@ export default function Workouts() {
             </div>
           </div>
 
-          <div className="card bg-gradient-to-br from-orange-50 to-orange-100">
+          <div className="card">
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-sm text-gray-600 mb-1">Total Distance</div>
