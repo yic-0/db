@@ -866,25 +866,25 @@ export default function Calendar() {
                 <div
                   key={idx}
                   onClick={() => setSelectedDate(day)}
-                  className={`min-h-24 p-1 border rounded cursor-pointer hover:bg-gray-50 ${
-                    !isCurrentMonth ? 'bg-gray-50 text-gray-400' : 'bg-white'
+                  className={`min-h-24 p-2 border border-white/70 rounded-xl cursor-pointer transition shadow-sm hover:shadow-md hover:-translate-y-0.5 ${
+                    !isCurrentMonth ? 'bg-gray-50 text-gray-400' : 'bg-white/90'
                   } ${isCurrentDay ? 'ring-2 ring-primary-500' : ''}`}
                 >
-                  <div className={`text-sm font-medium ${isCurrentDay ? 'text-primary-600' : ''}`}>
+                  <div className={`text-sm font-semibold ${isCurrentDay ? 'text-primary-600' : 'text-gray-800'}`}>
                     {format(day, 'd')}
                   </div>
-                  <div className="space-y-1 mt-1">
+                  <div className="space-y-1 mt-2">
                     {dayEvents.slice(0, 3).map(event => (
                       <div
                         key={event.id}
-                        className={`text-xs text-white px-1 py-0.5 rounded truncate ${event.color}`}
+                        className={`text-xs text-white px-2 py-1 rounded-lg truncate shadow-sm ${event.color}`}
                         title={event.title}
                       >
                         {event.title}
                       </div>
                     ))}
                     {dayEvents.length > 3 && (
-                      <div className="text-xs text-gray-500">
+                      <div className="text-[11px] text-gray-500">
                         +{dayEvents.length - 3} more
                       </div>
                     )}
