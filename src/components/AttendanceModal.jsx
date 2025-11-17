@@ -25,8 +25,18 @@ export default function AttendanceModal({ isOpen, onClose, practice }) {
   useEffect(() => {
     if (practice) {
       setPracticeNotes(practice.coach_notes || '')
+      // Reset member note overrides when switching practices to avoid leaking notes between sessions
+      setMemberNotes({})
     }
   }, [practice])
+
+  // Clear state when closing to avoid carrying notes into the next open
+  useEffect(() => {
+    if (!isOpen) {
+      setPracticeNotes('')
+      setMemberNotes({})
+    }
+  }, [isOpen])
 
   if (!isOpen || !practice) return null
 
