@@ -125,3 +125,61 @@ export function computeSeatMomentsForLineup(layout, athletes, lineup) {
     momentNormalized: r.moment / maxMoment,
   }));
 }
+
+/**
+ * Compute port/starboard/center weight distribution.
+ */
+export function computeLeftRightDistribution(layout, athletes, lineup) {
+  const seatById = new Map(layout.seats.map((s) => [s.id, s]));
+  const athleteById = new Map(athletes.map((a) => [a.id, a]));
+
+  let portWeight = 0;
+  let starboardWeight = 0;
+  let centerWeight = 0;
+
+  const normalizeSide = (seat, seatId) => {
+    const side = seat?.side?.toLowerCase?.();
+    if (side) return side;
+    const id = (seatId || '').toLowerCase();
+    if (id.includes('port') || id.startsWith('l')) return 'port';
+    if (id.includes('starboard') || id.startsWith('r')) return 'starboard';
+    return 'center';
+  };
+
+  for (const assign of lineup.assignments) {
+    const seat = seatById.get(assign.seatId);
+    const athlete = athleteById.get(assign.athleteId);
+    if (!athlete) continue;
+
+    const side = normalizeSide(seat, assign.seatId);
+    const w = athlete.weightKg || 0;
+    if (side === 'port' || side === 'left') portWeight += w;
+    else if (side === 'starboard' || side === 'right') starboardWeight += w;
+    else centerWeight += w;
+  }
+
+  const lrTotal = portWeight + starboardWeight;
+  const portRatio = lrTotal > 0 ? (portWeight / lrTotal) * 100 : 50;
+  const starboardRatio = lrTotal > 0 ? (starboardWeight / lrTotal) * 100 : 50;
+  const diff = portRatio - starboardRatio;
+
+  let statusLabel = 'Balanced';
+  let statusColor = { bg: 'bg-green-100', text: 'text-green-800' };
+  if (diff > 3) {
+    statusLabel = 'Port heavy';
+    statusColor = { bg: 'bg-blue-100', text: 'text-blue-800' };
+  } else if (diff < -3) {
+    statusLabel = 'Starboard heavy';
+    statusColor = { bg: 'bg-emerald-100', text: 'text-emerald-800' };
+  }
+
+  return {
+    portWeight,
+    starboardWeight,
+    centerWeight,
+    portRatio,
+    starboardRatio,
+    statusLabel,
+    statusColor,
+  };
+}

@@ -7,6 +7,7 @@ import { useAuthStore } from '../store/authStore'
 import { usePracticeStore } from '../store/practiceStore'
 import toast from 'react-hot-toast'
 import DragonBoatCogPanel from '../components/DragonBoatCogPanel'
+import DragonBoatLeftRightPanel from '../components/DragonBoatLeftRightPanel'
 
 export default function Lineups() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -1045,17 +1046,30 @@ export default function Lineups() {
         </div>
       )}
 
-      {/* COG & Seat Moments Panel */}
-      <div className="card mb-6">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="font-semibold text-gray-900">Center of Gravity & Seat Heatmap</h3>
-          <p className="text-xs text-gray-500">Uses current seat assignments; missing weights count as 0.</p>
+      {/* COG & Left/Right Panels */}
+      <div className="grid md:grid-cols-2 gap-4 mb-6">
+        <div className="card">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold text-gray-900">Center of Gravity & Seat Heatmap</h3>
+            <p className="text-xs text-gray-500">Uses current seat assignments; missing weights count as 0.</p>
+          </div>
+          <DragonBoatCogPanel
+            layout={cogLayout}
+            athletes={cogAthletes}
+            lineup={cogLineup}
+          />
         </div>
-        <DragonBoatCogPanel
-          layout={cogLayout}
-          athletes={cogAthletes}
-          lineup={cogLineup}
-        />
+        <div className="card">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold text-gray-900">Port vs Starboard Balance</h3>
+            <p className="text-xs text-gray-500">Live split by seat assignments.</p>
+          </div>
+          <DragonBoatLeftRightPanel
+            layout={cogLayout}
+            athletes={cogAthletes}
+            lineup={cogLineup}
+          />
+        </div>
       </div>
             </div>
           </div>
