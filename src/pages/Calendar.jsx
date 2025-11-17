@@ -641,7 +641,6 @@ export default function Calendar() {
                 className="rounded border-gray-300"
               />
               <span className="text-sm text-gray-700">Practices</span>
-              <span className="w-3 h-3 bg-blue-500 rounded"></span>
             </label>
             <label className="flex items-center gap-2">
               <input
@@ -651,7 +650,6 @@ export default function Calendar() {
                 className="rounded border-gray-300"
               />
               <span className="text-sm text-gray-700">Confirmed Races</span>
-              <span className="w-3 h-3 bg-green-500 rounded"></span>
             </label>
             {isCoachOrAdmin && (
               <label className="flex items-center gap-2">
@@ -662,7 +660,6 @@ export default function Calendar() {
                   className="rounded border-gray-300"
                 />
                 <span className="text-sm text-gray-700">Prospective Races</span>
-                <span className="w-3 h-3 bg-orange-500 rounded"></span>
               </label>
             )}
             <label className="flex items-center gap-2">
@@ -673,8 +670,34 @@ export default function Calendar() {
                 className="rounded border-gray-300"
               />
               <span className="text-sm text-gray-700">Deadlines</span>
-              <span className="w-3 h-3 bg-red-500 rounded"></span>
             </label>
+          </div>
+          <div className="mt-3">
+            <p className="text-xs font-semibold text-gray-700 mb-2">Legend</p>
+            <div className="flex flex-wrap gap-3 text-xs text-gray-600">
+              <span className="inline-flex items-center gap-2 px-2 py-1 rounded-full bg-blue-50 border border-blue-200">
+                <span className="w-3 h-3 bg-blue-500 rounded-sm"></span>
+                Practice
+              </span>
+              <span className="inline-flex items-center gap-2 px-2 py-1 rounded-full bg-green-50 border border-green-200">
+                <span className="w-3 h-3 bg-green-500 rounded-sm"></span>
+                Confirmed race
+              </span>
+              {isCoachOrAdmin && (
+                <span className="inline-flex items-center gap-2 px-2 py-1 rounded-full bg-orange-50 border border-orange-200">
+                  <span className="w-3 h-3 bg-orange-500 rounded-sm"></span>
+                  Prospective race
+                </span>
+              )}
+              <span className="inline-flex items-center gap-2 px-2 py-1 rounded-full bg-purple-50 border border-purple-200">
+                <span className="w-3 h-3 bg-purple-500 rounded-sm"></span>
+                Team event
+              </span>
+              <span className="inline-flex items-center gap-2 px-2 py-1 rounded-full bg-red-50 border border-red-200">
+                <span className="w-3 h-3 bg-red-500 rounded-sm"></span>
+                Deadlines
+              </span>
+            </div>
           </div>
         </div>
       )}
