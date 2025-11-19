@@ -952,219 +952,26 @@ export default function Lineups() {
         </div>
       )}
 
-      {/* Balance Panel */}
-      <div className="card mb-6 bg-gradient-to-r from-blue-50 to-purple-50">
-        <h3 className="font-semibold text-gray-900 mb-4">Weight Distribution & Balance</h3>
+      {/* Port vs Starboard Balance */}
+      <div className="mb-6">
+        <DragonBoatLeftRightPanel
+          layout={cogLayout}
+          athletes={cogAthletes}
+          lineup={cogLineup}
+        />
+      </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-          {/* Total Weight */}
-          <div className="bg-white rounded-lg p-3 shadow-sm">
-            <p className="text-xs text-gray-600">Total Weight</p>
-            <p className="text-2xl font-bold text-gray-900">
-              {formatWeight(balance.totalWeight)}
-              {balance.hasSecondary && (
-                <span className="text-sm ml-2 text-gray-600">
-                  ({formatWeight(balance.totalWeightSecondary)} alt)
-                </span>
-              )}
-            </p>
-          </div>
-
-          {/* Left vs Right */}
-          <div className="bg-white rounded-lg p-3 shadow-sm">
-            <p className="text-xs text-gray-600">Left vs Right</p>
-            <div className="flex items-center gap-2">
-              <p className="text-lg font-bold text-gray-900">
-                {formatWeight(balance.leftTotal)} / {formatWeight(balance.rightTotal)}
-                {balance.hasSecondary && (
-                  <span className="text-xs ml-1 text-gray-600">
-                    ({formatWeight(balance.leftTotalSecondary)} / {formatWeight(balance.rightTotalSecondary)})
-                  </span>
-                )}
-              </p>
-            </div>
-            <div className={`text-xs font-semibold mt-1 ${getBalanceStatus(balance.sideBalance).color}`}>
-              Δ {formatWeight(balance.sideDiff)} ({balance.sideBalance.toFixed(1)}%)
-            </div>
-          </div>
-
-          {/* Overall Balance Status */}
-          <div className="bg-white rounded-lg p-3 shadow-sm">
-            <p className="text-xs text-gray-600">Balance Status</p>
-            <div className="space-y-1 mt-1">
-              <div className={`text-xs px-2 py-1 rounded ${getBalanceStatus(balance.sideBalance).bg} ${getBalanceStatus(balance.sideBalance).color} font-semibold`}>
-                L/R: {getBalanceStatus(balance.sideBalance).label}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Visual Balance Bar */}
-        <div className="space-y-3">
-          {/* Left/Right Balance Bar */}
-          <div>
-            <div className="flex justify-between text-xs text-gray-600 mb-1">
-              <span>Left: {formatWeight(balance.leftTotal)}</span>
-              <span>Right: {formatWeight(balance.rightTotal)}</span>
-            </div>
-            <div className="space-y-1">
-              {/* Primary */}
-              <div className="relative h-6 bg-gray-200 rounded-full overflow-hidden">
-                <div
-                  className={`absolute left-0 h-full ${balance.leftTotal >= balance.rightTotal ? 'bg-cyan-600' : 'bg-sky-600'} transition-all z-10 opacity-90`}
-                  style={{ width: `${balance.totalWeight > 0 ? (balance.leftTotal / balance.totalWeight) * 100 : 50}%` }}
-                />
-                <div
-                  className={`absolute right-0 h-full ${balance.rightTotal > balance.leftTotal ? 'bg-cyan-600' : 'bg-sky-600'} transition-all z-10 opacity-90`}
-                  style={{ width: `${balance.totalWeight > 0 ? (balance.rightTotal / balance.totalWeight) * 100 : 50}%` }}
-                />
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
-                  <span className="text-xs font-bold text-white drop-shadow flex items-center gap-2">
-                    <span>Δ {formatWeight(balance.sideDiff)}</span>
-                    {balance.hasSecondary && (
-                      <span className="text-[11px] text-gray-100">Alt Δ {formatWeight(balance.leftTotalSecondary - balance.rightTotalSecondary)}</span>
-                    )}
-                  </span>
-                </div>
-              </div>
-                {/* Alternate */}
-                {balance.hasSecondary && balance.totalWeightSecondary > 0 && (
-                  <div className="relative h-4 bg-gray-100 rounded-full overflow-hidden border border-gray-200">
-                    <div
-                      className={`absolute left-0 h-full ${balance.leftTotalSecondary >= balance.rightTotalSecondary ? 'bg-emerald-500' : 'bg-teal-400'} transition-all z-10 opacity-90`}
-                      style={{ width: `${(balance.leftTotalSecondary / balance.totalWeightSecondary) * 100}%` }}
-                  />
-                  <div
-                    className={`absolute right-0 h-full ${balance.rightTotalSecondary > balance.leftTotalSecondary ? 'bg-emerald-500' : 'bg-teal-500'} transition-all z-10 opacity-90`}
-                    style={{ width: `${(balance.rightTotalSecondary / balance.totalWeightSecondary) * 100}%` }}
-                    />
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <span className="text-[10px] font-semibold text-white drop-shadow">
-                        Alt Δ {formatWeight(balance.leftTotalSecondary - balance.rightTotalSecondary)}
-                      </span>
-                    </div>
-        </div>
-      )}
-
-      {/* COG & Left/Right Panels */}
+      {/* COG & Seat Heatmap */}
       <div className="card mb-6">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="font-semibold text-gray-900">Center of Gravity, Seat Heatmap & Port/Starboard Balance</h3>
+          <h3 className="font-semibold text-gray-900">Center of Gravity & Seat Heatmap</h3>
           <p className="text-xs text-gray-500">Uses current seat assignments; missing weights count as 0.</p>
         </div>
-        <div className="space-y-4">
-          <DragonBoatCogPanel
-            layout={cogLayout}
-            athletes={cogAthletes}
-            lineup={cogLineup}
-          />
-          <DragonBoatLeftRightPanel
-            layout={cogLayout}
-            athletes={cogAthletes}
-            lineup={cogLineup}
-          />
-        </div>
-      </div>
-            </div>
-          </div>
-
-          {/* Seat heatmap (top/bottom rows) */}
-          <div className="space-y-1">
-            <div className="flex justify-between text-[11px] text-gray-600">
-              <span>Seat heatmap (front to back)</span>
-              {balance.hasSecondary && <span className="text-gray-500">Alt rows include secondary</span>}
-            </div>
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] px-2 py-1 rounded-full text-white flex items-center justify-center" style={pillStyle(drummerHeatWeight)}>
-                  Drummer
-                </span>
-                <div className="flex-1 space-y-1">
-                  <div className="grid grid-cols-10 gap-1 h-4">
-                    {leftWeights.map((w, idx) => (
-                      <div key={`left-${idx}`} className="relative rounded-full overflow-hidden bg-gray-100 border border-gray-200">
-                        <div
-                          className="absolute inset-0 bg-rose-500"
-                          style={{ opacity: Math.min(1, w / maxSeat) }}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                  <div className="grid grid-cols-10 gap-1 h-4">
-                    {rightWeights.map((w, idx) => (
-                      <div key={`right-${idx}`} className="relative rounded-full overflow-hidden bg-gray-100 border border-gray-200">
-                        <div
-                          className="absolute inset-0 bg-rose-500"
-                          style={{ opacity: Math.min(1, w / maxSeat) }}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <span className="text-[10px] px-2 py-1 rounded-full text-white flex items-center justify-center" style={pillStyle(steersHeatWeight)}>
-                  Steerer
-                </span>
-              </div>
-            </div>
-
-            {balance.hasSecondary && balance.totalWeightSecondary > 0 && (
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] px-2 py-1 rounded-full text-white flex items-center justify-center" style={pillStyle(altDrummerHeatWeight, true)}>
-                    Drummer
-                  </span>
-                  <div className="flex-1 space-y-1">
-                    <div className="grid grid-cols-10 gap-1 h-3">
-                      {altLeftWeights.map((w, idx) => (
-                        <div key={`alt-left-${idx}`} className="relative rounded-full overflow-hidden bg-gray-100 border border-gray-200">
-                          <div
-                            className="absolute inset-0 bg-rose-400"
-                            style={{ opacity: Math.min(1, w / maxSeat) }}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                    <div className="grid grid-cols-10 gap-1 h-3">
-                      {altRightWeights.map((w, idx) => (
-                        <div key={`alt-right-${idx}`} className="relative rounded-full overflow-hidden bg-gray-100 border border-gray-200">
-                          <div
-                            className="absolute inset-0 bg-rose-400"
-                            style={{ opacity: Math.min(1, w / maxSeat) }}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  <span className="text-[10px] px-2 py-1 rounded-full text-white flex items-center justify-center" style={pillStyle(altSteersHeatWeight, true)}>
-                    Steerer
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2 h-3 mt-1">
-                  {[{ label: 'Drummer (alt)', weight: altDrummerHeatWeight }, { label: 'Steer (alt)', weight: altSteersHeatWeight }].map(pos => (
-                    <div key={pos.label} className="relative rounded-full overflow-hidden bg-gray-100 border border-gray-200">
-                      <div
-                        className="absolute inset-0 bg-rose-400"
-                        style={{ opacity: Math.min(1, pos.weight / maxSeat) }}
-                      />
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <span className="text-[10px] font-semibold text-white drop-shadow-sm">{pos.label}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Helpful Tips */}
-        <div className="mt-4 p-3 bg-white rounded-lg border border-blue-200">
-          <p className="text-xs text-gray-600">
-            <span className="font-semibold">💡 Tip:</span> Aim for less than 3% difference for excellent balance.
-            Front and back act like a seesaw pivot—weight at the ends has outsized impact.
-          </p>
-        </div>
+        <DragonBoatCogPanel
+          layout={cogLayout}
+          athletes={cogAthletes}
+          lineup={cogLineup}
+        />
       </div>
 
       <DragDropContext onDragEnd={handleDragEnd}>
