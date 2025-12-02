@@ -13,7 +13,7 @@ import CheckInButton from '../components/CheckInButton'
 import CarpoolMap from '../components/CarpoolMap'
 import VenueMap from '../components/VenueMap'
 import AddressSearchInput from '../components/AddressSearchInput'
-import { format, isPast, isToday, differenceInDays, differenceInHours, differenceInMinutes, parseISO } from 'date-fns'
+import { format, isPast, isToday, isTomorrow, differenceInDays, differenceInHours, differenceInMinutes, parseISO } from 'date-fns'
 import toast from 'react-hot-toast'
 import { Linkify } from '../utils/linkify'
 import { parseGoogleMapsLink } from '../utils/parseGoogleMapsLink'
@@ -2532,7 +2532,7 @@ END:VCALENDAR`
           ) : (
             <>
               {/* Day-Before/Day-Of Reminder Banner */}
-              {!countdown.isPast && (countdown.days <= 1 || isToday(new Date(event.event_date))) && (
+              {!countdown.isPast && (isTomorrow(new Date(event.event_date)) || isToday(new Date(event.event_date))) && (
                 <div className={`relative overflow-hidden rounded-xl p-4 ${
                   isToday(new Date(event.event_date))
                     ? 'bg-gradient-to-r from-red-500 via-rose-500 to-red-500'

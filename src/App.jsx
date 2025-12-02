@@ -14,6 +14,7 @@ import EventDetail from './pages/EventDetail'
 import Workouts from './pages/Workouts'
 import Calendar from './pages/Calendar'
 import Notifications from './pages/Notifications'
+import Experimental from './pages/Experimental'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuthStore()
@@ -58,6 +59,7 @@ function App() {
             <Route path="calendar" element={<Calendar />} />
             <Route path="announcements" element={<Announcements />} />
             <Route path="notifications" element={<Notifications />} />
+            <Route path="experimental" element={<Experimental />} />
             <Route path="profile" element={<Profile />} />
           </Route>
         </Routes>
