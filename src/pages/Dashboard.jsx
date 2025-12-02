@@ -40,13 +40,18 @@ export default function Dashboard() {
   useEffect(() => {
     const loadRSVPs = async () => {
       if (user && practices.length > 0) {
-        const recentPractices = practices
-          .filter(p => isBefore(new Date(p.date), new Date()))
-          .slice(-10)
+        const today = new Date()
+        const thirtyDaysAgo = subDays(today, 30)
 
-        for (const practice of recentPractices) {
-          await fetchRSVPs(practice.id)
-        }
+        // Fetch RSVPs for all practices in the last 30 days (for stats calculation)
+        const recentPractices = practices.filter(p => {
+          const practiceDate = new Date(p.date)
+          return isBefore(practiceDate, today) && isAfter(practiceDate, thirtyDaysAgo)
+        })
+
+        await Promise.all(
+          recentPractices.map(practice => fetchRSVPs(practice.id))
+        )
       }
     }
     loadRSVPs()
@@ -167,7 +172,7 @@ export default function Dashboard() {
         title: 'Upcoming race',
         description: `${race.name} - ${format(new Date(race.race_date), 'MMM d, yyyy')}`,
         icon: 'trophy',
-        color: 'amber',
+        color: 'accent',
         date: new Date(race.created_at || race.race_date)
       })
     })
@@ -190,76 +195,89 @@ export default function Dashboard() {
     return format(date, 'MMM d')
   }
 
+  const getActivityColor = (color) => {
+    const colors = {
+      primary: { bg: 'bg-primary-50', border: 'border-primary-200', icon: 'text-primary-600' },
+      success: { bg: 'bg-success-50', border: 'border-success-200', icon: 'text-success-600' },
+      accent: { bg: 'bg-accent-50', border: 'border-accent-200', icon: 'text-accent-600' },
+      amber: { bg: 'bg-amber-50', border: 'border-amber-200', icon: 'text-amber-600' },
+    }
+    return colors[color] || colors.primary
+  }
+
   return (
-    <div className="space-y-10 relative">
-      {/* Welcome Section */}
-      <div className="relative overflow-hidden rounded-3xl border border-white/50 bg-gradient-to-br from-primary-700 via-primary-600 to-accent-500 p-8 md:p-10 text-white shadow-xl shadow-primary-600/20">
-        <div className="absolute inset-0 opacity-40 bg-[radial-gradient(circle_at_20%_20%,rgba(255,255,255,0.35),transparent_35%),radial-gradient(circle_at_80%_0%,rgba(255,255,255,0.25),transparent_30%)]" aria-hidden="true" />
+    <div className="space-y-6 lg:space-y-8 relative pb-20 lg:pb-0">
+      {/* Welcome Section - Athletic Hero */}
+      <div className="relative overflow-hidden rounded-xl lg:rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-primary-950 p-5 md:p-8 lg:p-10 text-white shadow-2xl">
+        {/* Decorative Elements */}
+        <div className="absolute top-0 right-0 w-96 h-96 bg-primary-500/20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
+        <div className="absolute bottom-0 left-0 w-64 h-64 bg-accent-500/10 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2" />
+        <div className="absolute inset-0 bg-[linear-gradient(135deg,transparent_25%,rgba(8,145,178,0.05)_25%,rgba(8,145,178,0.05)_50%,transparent_50%,transparent_75%,rgba(8,145,178,0.05)_75%)] bg-[length:40px_40px]" />
+
         <div className="relative z-10 flex flex-col lg:flex-row gap-8 lg:items-center">
           <div className="flex-1 space-y-5">
-            <span className="chip bg-white/15 border-white/40 text-white">
-              <Icon name="boat" size={16} className="text-white" />
-              Season Momentum
+            <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 border border-white/20 text-xs font-bold uppercase tracking-wider text-white/90 backdrop-blur-sm">
+              <Icon name="boat" size={14} className="text-primary-300" />
+              <span>Season Momentum</span>
             </span>
             <div>
-              <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight">
-                {getGreeting()}, {firstName}. Ready to set the pace?
+              <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-display tracking-wide text-white">
+                {getGreeting()}, {firstName}
               </h1>
-              <p className="text-primary-100/90 max-w-3xl mt-2">
-                Keep the crew aligned with live attendance, playful workouts, and race readiness - all in one sleek cockpit built for paddlers.
+              <p className="text-slate-300 max-w-2xl mt-2 md:mt-4 text-sm md:text-base lg:text-lg leading-relaxed">
+                Ready to set the pace? Keep the crew aligned with live attendance, workouts, and race readiness.
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
-              <span className="pill bg-white/15 border-white/30 text-white">
+              <span className="inline-flex items-center px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-sm font-medium text-slate-300 backdrop-blur-sm">
+                <span className="w-2 h-2 rounded-full bg-primary-400 mr-2.5 animate-pulse" />
                 {loading ? '...' : `${stats.upcomingPractices} practices`} this week
               </span>
-              <span className="pill bg-white/15 border-white/30 text-white">
-                {loading ? '...' : `${stats.activeMembers} active crew`}
-              </span>
-              <span className="pill bg-white/15 border-white/30 text-white">
-                {loading ? '...' : `${stats.attendanceRate}% attendance`}
+              <span className="inline-flex items-center px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-sm font-medium text-slate-300 backdrop-blur-sm">
+                <span className="w-2 h-2 rounded-full bg-success-400 mr-2.5" />
+                {loading ? '...' : `${stats.activeMembers} active paddlers`}
               </span>
             </div>
-            <div className="flex flex-wrap gap-3">
-              <Link to="/practice-prep" className="btn bg-white text-primary-700 hover:bg-primary-50 hover:text-primary-800 shadow-lg shadow-primary-700/20">
-                Plan the next session
+            <div className="flex flex-col sm:flex-row gap-3 pt-2">
+              <Link to="/practices" className="btn btn-primary shadow-xl shadow-primary-900/30 w-full sm:w-auto justify-center">
+                <Icon name="calendar" size={16} className="mr-2 sm:hidden" />
+                Plan Session
               </Link>
               <Link
                 to="/calendar"
-                className="btn btn-secondary bg-white/15 border-white/50 text-white hover:bg-white/25 hover:text-white hover:border-white/70"
+                className="btn bg-white/10 text-white hover:bg-white/20 border-2 border-white/20 backdrop-blur-sm hover:border-white/30 w-full sm:w-auto justify-center"
               >
-                Open crew calendar
+                <Icon name="events" size={16} className="mr-2 sm:hidden" />
+                Crew Calendar
               </Link>
             </div>
           </div>
 
-          <div className="lg:w-[360px]">
-            <div className="bg-white/10 border border-white/20 rounded-2xl p-5 shadow-lg shadow-primary-800/10 backdrop-blur">
-              <h3 className="text-sm font-semibold text-white/80 mb-3">Rhythm snapshot</h3>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-white/10 rounded-xl p-3 border border-white/10">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs text-white/70">Readiness</p>
-                    <Icon name="check" size={16} className="text-white" />
+          {/* Stats Card - Hidden on mobile, shown on lg+ */}
+          <div className="hidden lg:block lg:w-[340px]">
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-md">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-primary-300 mb-5">Rhythm Snapshot</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-white/5 rounded-xl p-4 border border-white/5 hover:bg-white/10 transition-colors">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Readiness</p>
+                    <Icon name="check" size={16} className="text-success-400" />
                   </div>
-                  <p className="text-2xl font-bold">{loading ? '...' : `${stats.attendanceRate}%`}</p>
-                  <p className="text-xs text-white/60 mt-1">Attendance this month</p>
+                  <p className="text-3xl font-display tracking-wide text-white">{loading ? '...' : `${stats.attendanceRate}%`}</p>
                 </div>
-                <div className="bg-white/10 rounded-xl p-3 border border-white/10">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs text-white/70">Energy</p>
-                    <Icon name="fire" size={16} className="text-white" />
+                <div className="bg-white/5 rounded-xl p-4 border border-white/5 hover:bg-white/10 transition-colors">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Energy</p>
+                    <Icon name="fire" size={16} className="text-accent-400" />
                   </div>
-                  <p className="text-2xl font-bold">{loading ? '...' : stats.workoutStreak}</p>
-                  <p className="text-xs text-white/60 mt-1">Day workout streak</p>
+                  <p className="text-3xl font-display tracking-wide text-white">{loading ? '...' : stats.workoutStreak}<span className="text-lg text-slate-400 ml-1">days</span></p>
                 </div>
-                <div className="bg-white/10 rounded-xl p-3 border border-white/10 col-span-2">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs text-white/70">Crew vibe</p>
-                    <Icon name="trophy" size={16} className="text-white" />
+                <div className="bg-gradient-to-r from-primary-500/10 to-accent-500/10 rounded-xl p-4 border border-white/5 col-span-2">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <Icon name="trophy" size={16} className="text-accent-400" />
+                    <p className="text-sm font-bold text-white">Race Hungry</p>
                   </div>
-                  <p className="text-lg font-semibold mt-1">Aligned & race hungry</p>
-                  <p className="text-xs text-white/60 mt-1">Keep syncing RSVPs to stay podium-ready.</p>
+                  <p className="text-sm text-slate-400">Keep syncing RSVPs to stay podium-ready.</p>
                 </div>
               </div>
             </div>
@@ -267,105 +285,109 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="card">
-          <div className="flex items-center justify-between mb-3">
-            <div className="p-3 bg-primary-50 rounded-xl shadow-inner">
-              <Icon name="calendar" size={22} className="text-primary-600" />
+      {/* Quick Stats Grid */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
+        <div className="stat-card group p-3 lg:p-5">
+          <div className="flex items-center justify-between mb-2 lg:mb-4">
+            <div className="p-2 lg:p-3 bg-gradient-to-br from-primary-100 to-primary-50 rounded-lg lg:rounded-xl group-hover:scale-105 transition-transform">
+              <Icon name="calendar" size={18} className="text-primary-600 lg:hidden" />
+              <Icon name="calendar" size={22} className="text-primary-600 hidden lg:block" />
             </div>
-            <span className="badge badge-primary">This week</span>
+            <span className="badge badge-primary text-[9px] lg:text-[10px]">Week</span>
           </div>
-          <div className="text-3xl font-bold text-gray-900">
+          <div className="text-2xl lg:text-3xl font-display tracking-wide text-slate-900">
             {loading ? '...' : stats.upcomingPractices}
           </div>
-          <p className="text-sm text-gray-600 mt-1">Upcoming practices</p>
+          <p className="text-xs lg:text-sm font-medium text-slate-500 mt-0.5 lg:mt-1">Practices</p>
         </div>
 
-        <div className="card">
-          <div className="flex items-center justify-between mb-3">
-            <div className="p-3 bg-success-50 rounded-xl shadow-inner">
-              <Icon name="roster" size={22} className="text-success-600" />
+        <div className="stat-card group p-3 lg:p-5">
+          <div className="flex items-center justify-between mb-2 lg:mb-4">
+            <div className="p-2 lg:p-3 bg-gradient-to-br from-success-100 to-success-50 rounded-lg lg:rounded-xl group-hover:scale-105 transition-transform">
+              <Icon name="roster" size={18} className="text-success-600 lg:hidden" />
+              <Icon name="roster" size={22} className="text-success-600 hidden lg:block" />
             </div>
-            <span className="badge badge-success">Active</span>
+            <span className="badge badge-success text-[9px] lg:text-[10px]">Active</span>
           </div>
-          <div className="text-3xl font-bold text-gray-900">
+          <div className="text-2xl lg:text-3xl font-display tracking-wide text-slate-900">
             {loading ? '...' : stats.activeMembers}
           </div>
-          <p className="text-sm text-gray-600 mt-1">Team members</p>
+          <p className="text-xs lg:text-sm font-medium text-slate-500 mt-0.5 lg:mt-1">Paddlers</p>
         </div>
 
-        <div className="card">
-          <div className="flex items-center justify-between mb-3">
-            <div className="p-3 bg-accent-50 rounded-xl shadow-inner">
-              <Icon name="target" size={22} className="text-accent-600" />
+        <div className="stat-card group p-3 lg:p-5">
+          <div className="flex items-center justify-between mb-2 lg:mb-4">
+            <div className="p-2 lg:p-3 bg-gradient-to-br from-accent-100 to-accent-50 rounded-lg lg:rounded-xl group-hover:scale-105 transition-transform">
+              <Icon name="target" size={18} className="text-accent-600 lg:hidden" />
+              <Icon name="target" size={22} className="text-accent-600 hidden lg:block" />
             </div>
-            <span className="badge bg-accent-100 text-accent-700">30 days</span>
+            <span className="badge badge-accent text-[9px] lg:text-[10px]">30d</span>
           </div>
-          <div className="text-3xl font-bold text-gray-900">
+          <div className="text-2xl lg:text-3xl font-display tracking-wide text-slate-900">
             {loading ? '...' : `${stats.attendanceRate}%`}
           </div>
-          <p className="text-sm text-gray-600 mt-1">Your attendance</p>
+          <p className="text-xs lg:text-sm font-medium text-slate-500 mt-0.5 lg:mt-1">Attendance</p>
         </div>
 
-        <div className="card">
-          <div className="flex items-center justify-between mb-3">
-            <div className="p-3 bg-amber-50 rounded-xl shadow-inner">
-              <Icon name="fire" size={22} className="text-amber-600" />
+        <div className="stat-card group p-3 lg:p-5">
+          <div className="flex items-center justify-between mb-2 lg:mb-4">
+            <div className="p-2 lg:p-3 bg-gradient-to-br from-amber-100 to-amber-50 rounded-lg lg:rounded-xl group-hover:scale-105 transition-transform">
+              <Icon name="fire" size={18} className="text-amber-600 lg:hidden" />
+              <Icon name="fire" size={22} className="text-amber-600 hidden lg:block" />
             </div>
-            <span className="badge badge-warning">Streak</span>
+            <span className="badge badge-warning text-[9px] lg:text-[10px]">Streak</span>
           </div>
-          <div className="text-3xl font-bold text-gray-900">
+          <div className="text-2xl lg:text-3xl font-display tracking-wide text-slate-900">
             {loading ? '...' : stats.workoutStreak}
           </div>
-          <p className="text-sm text-gray-600 mt-1">Day workout streak</p>
+          <p className="text-xs lg:text-sm font-medium text-slate-500 mt-0.5 lg:mt-1">Workout Days</p>
         </div>
       </div>
 
       {/* Quick Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        <Link to="/practices" className="card group cursor-pointer hover:border-primary-200">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Link to="/practices" className="card-interactive group">
           <div className="flex items-center gap-4">
-            <div className="p-4 bg-gradient-to-br from-primary-500 to-primary-600 rounded-xl shadow-lg shadow-primary-500/25">
+            <div className="p-4 bg-gradient-to-br from-primary-500 to-primary-600 rounded-xl shadow-lg shadow-primary-500/30 group-hover:shadow-xl group-hover:shadow-primary-500/40 transition-all group-hover:scale-105">
               <Icon name="practice" size={28} className="text-white" />
             </div>
-            <div className="flex-1">
-              <h3 className="font-semibold text-gray-900 group-hover:text-primary-600 transition-colors">
+            <div className="flex-1 min-w-0">
+              <h3 className="font-bold text-slate-900 group-hover:text-primary-600 transition-colors">
                 View Practices
               </h3>
-              <p className="text-sm text-gray-500">Check upcoming sessions</p>
+              <p className="text-sm text-slate-500 truncate">Check upcoming sessions</p>
             </div>
-            <Icon name="arrowRight" size={20} className="text-gray-400 group-hover:text-primary-500 group-hover:translate-x-1 transition-all" />
+            <Icon name="arrowRight" size={20} className="text-slate-300 group-hover:text-primary-500 group-hover:translate-x-1 transition-all" />
           </div>
         </Link>
 
-        <Link to="/workouts" className="card group cursor-pointer hover:border-success-200">
+        <Link to="/workouts" className="card-interactive group">
           <div className="flex items-center gap-4">
-            <div className="p-4 bg-gradient-to-br from-success-500 to-success-600 rounded-xl shadow-lg shadow-success-500/25">
+            <div className="p-4 bg-gradient-to-br from-success-500 to-success-600 rounded-xl shadow-lg shadow-success-500/30 group-hover:shadow-xl group-hover:shadow-success-500/40 transition-all group-hover:scale-105">
               <Icon name="workouts" size={28} className="text-white" />
             </div>
-            <div className="flex-1">
-              <h3 className="font-semibold text-gray-900 group-hover:text-success-600 transition-colors">
+            <div className="flex-1 min-w-0">
+              <h3 className="font-bold text-slate-900 group-hover:text-success-600 transition-colors">
                 Log Workout
               </h3>
-              <p className="text-sm text-gray-500">Track your training</p>
+              <p className="text-sm text-slate-500 truncate">Track your training</p>
             </div>
-            <Icon name="arrowRight" size={20} className="text-gray-400 group-hover:text-success-500 group-hover:translate-x-1 transition-all" />
+            <Icon name="arrowRight" size={20} className="text-slate-300 group-hover:text-success-500 group-hover:translate-x-1 transition-all" />
           </div>
         </Link>
 
-        <Link to="/calendar" className="card group cursor-pointer hover:border-accent-200">
+        <Link to="/calendar" className="card-interactive group">
           <div className="flex items-center gap-4">
-            <div className="p-4 bg-gradient-to-br from-accent-500 to-accent-600 rounded-xl shadow-lg shadow-accent-500/25">
+            <div className="p-4 bg-gradient-to-br from-accent-500 to-accent-600 rounded-xl shadow-lg shadow-accent-500/30 group-hover:shadow-xl group-hover:shadow-accent-500/40 transition-all group-hover:scale-105">
               <Icon name="events" size={28} className="text-white" />
             </div>
-            <div className="flex-1">
-              <h3 className="font-semibold text-gray-900 group-hover:text-accent-600 transition-colors">
+            <div className="flex-1 min-w-0">
+              <h3 className="font-bold text-slate-900 group-hover:text-accent-600 transition-colors">
                 Team Calendar
               </h3>
-              <p className="text-sm text-gray-500">Races & events</p>
+              <p className="text-sm text-slate-500 truncate">Races & events</p>
             </div>
-            <Icon name="arrowRight" size={20} className="text-gray-400 group-hover:text-accent-500 group-hover:translate-x-1 transition-all" />
+            <Icon name="arrowRight" size={20} className="text-slate-300 group-hover:text-accent-500 group-hover:translate-x-1 transition-all" />
           </div>
         </Link>
       </div>
@@ -374,30 +396,42 @@ export default function Dashboard() {
       <div className="card">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <p className="tagline text-primary-700">Pulse</p>
-            <h2 className="section-header">Recent Activity</h2>
+            <p className="text-xs font-bold uppercase tracking-widest text-primary-600 mb-1">Pulse</p>
+            <h2 className="text-2xl font-display tracking-wide text-slate-900">Recent Activity</h2>
           </div>
-          <Link to="/announcements" className="text-sm text-primary-600 hover:text-primary-700 font-semibold">
+          <Link to="/announcements" className="text-sm text-primary-600 hover:text-primary-700 font-bold hover:underline">
             View all
           </Link>
         </div>
 
-        <div className="space-y-4">
+        <div className="space-y-3">
           {recentActivity.length === 0 ? (
-            <p className="text-gray-500 text-center py-4">No recent activity</p>
-          ) : (
-            recentActivity.map(activity => (
-              <div key={activity.id} className="flex items-start gap-4 p-4 bg-white rounded-2xl border border-gray-100 shadow-sm">
-                <div className={`p-2 rounded-lg bg-${activity.color}-50 border border-${activity.color}-100`}>
-                  <Icon name={activity.icon} size={18} className={`text-${activity.color}-600`} />
-                </div>
-                <div className="flex-1">
-                  <p className="font-medium text-gray-900">{activity.title}</p>
-                  <p className="text-sm text-gray-600">{activity.description}</p>
-                  <p className="text-xs text-gray-400 mt-1">{getTimeAgo(activity.date)}</p>
-                </div>
+            <div className="text-center py-8">
+              <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                <Icon name="calendar" size={24} className="text-slate-400" />
               </div>
-            ))
+              <p className="text-slate-500 font-medium">No recent activity</p>
+              <p className="text-sm text-slate-400">Your team updates will appear here</p>
+            </div>
+          ) : (
+            recentActivity.map((activity, idx) => {
+              const colors = getActivityColor(activity.color)
+              return (
+                <div
+                  key={activity.id}
+                  className={`flex items-start gap-4 p-4 bg-slate-50/50 rounded-xl border border-slate-100 hover:bg-white hover:shadow-sm hover:border-slate-200 transition-all animate-slide-up stagger-${idx + 1}`}
+                >
+                  <div className={`p-2.5 rounded-xl ${colors.bg} border ${colors.border}`}>
+                    <Icon name={activity.icon} size={18} className={colors.icon} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-slate-900">{activity.title}</p>
+                    <p className="text-sm text-slate-600 mt-0.5">{activity.description}</p>
+                    <p className="text-xs text-slate-400 mt-2 font-medium">{getTimeAgo(activity.date)}</p>
+                  </div>
+                </div>
+              )
+            })
           )}
         </div>
       </div>

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { usePracticeStore } from '../store/practiceStore'
 import { format } from 'date-fns'
+import { convertWeightForDisplay } from '../utils/weightConverter'
 
 export default function MemberHistoryModal({ member, isOpen, onClose }) {
   const { fetchMemberHistory } = usePracticeStore()
@@ -33,7 +34,7 @@ export default function MemberHistoryModal({ member, isOpen, onClose }) {
             <div>
               <h2 className="text-2xl font-bold text-gray-900">{member.full_name}</h2>
               <p className="text-sm text-gray-600 mt-1">
-                Practice History & Notes
+                Paddler History & Notes
               </p>
             </div>
             <button
@@ -58,7 +59,7 @@ export default function MemberHistoryModal({ member, isOpen, onClose }) {
             )}
             {member.weight_kg && (
               <span className="px-2 py-1 bg-purple-100 text-purple-800 rounded">
-                {member.weight_kg}kg
+                {convertWeightForDisplay(member.weight_kg, member.weight_unit || 'lbs', 1)}{member.weight_unit || 'lbs'}
               </span>
             )}
           </div>

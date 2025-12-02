@@ -1,0 +1,10 @@
+column_name,data_type
+id,uuid
+confirmed_race_id,uuid
+user_id,uuid
+status,character varying
+payment_status,character varying
+amount_paid,numeric
+notes,text
+created_at,timestamp without time zone
+updated_at,timestamp without time zone

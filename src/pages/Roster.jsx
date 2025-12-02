@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useRosterStore } from '../store/rosterStore'
 import { useAuthStore } from '../store/authStore'
+import { convertWeightForDisplay, convertWeightForStorage, formatWeight } from '../utils/weightConverter'
+import { convertHeightForDisplay, feetInchesToCm, formatHeight } from '../utils/heightConverter'
 import toast from 'react-hot-toast'
 
 export default function Roster() {
@@ -13,7 +15,7 @@ export default function Roster() {
   const [isSaving, setIsSaving] = useState(false)
   const [guestForm, setGuestForm] = useState({
     full_name: '',
-    weight_kg: '',
+    weight_lbs: '',
     skill_level: 'novice',
     preferred_side: ''
   })
@@ -24,8 +26,10 @@ export default function Roster() {
     role: '',
     skill_level: '',
     preferred_side: '',
-    weight_kg: '',
-    height_cm: '',
+    weight_lbs: '',
+    height_feet: '',
+    height_inches: '',
+    gender: '',
     emergency_contact_name: '',
     emergency_contact_phone: '',
     medical_notes: '',
@@ -68,21 +72,21 @@ export default function Roster() {
 
   const getRoleBadgeColor = (role) => {
     switch (role) {
-      case 'admin': return 'bg-purple-100 text-purple-800 border-purple-300'
-      case 'coach': return 'bg-blue-100 text-blue-800 border-blue-300'
-      case 'captain': return 'bg-yellow-100 text-yellow-800 border-yellow-300'
-      case 'steersperson': return 'bg-green-100 text-green-800 border-green-300'
-      default: return 'bg-gray-100 text-gray-800 border-gray-300'
+      case 'admin': return 'badge badge-neutral border-purple-200 text-purple-700 bg-purple-50'
+      case 'coach': return 'badge badge-primary'
+      case 'captain': return 'badge badge-warning'
+      case 'steersperson': return 'badge badge-success'
+      default: return 'badge badge-neutral'
     }
   }
 
   const getSkillBadgeColor = (skill) => {
     switch (skill) {
-      case 'novice': return 'bg-gray-100 text-gray-700'
-      case 'intermediate': return 'bg-blue-100 text-blue-700'
-      case 'advanced': return 'bg-green-100 text-green-700'
-      case 'competitive': return 'bg-red-100 text-red-700'
-      default: return 'bg-gray-100 text-gray-700'
+      case 'novice': return 'badge badge-neutral'
+      case 'intermediate': return 'badge badge-primary'
+      case 'advanced': return 'badge badge-success'
+      case 'competitive': return 'badge badge-danger'
+      default: return 'badge badge-neutral'
     }
   }
 
@@ -100,19 +104,45 @@ export default function Roster() {
     return `${firstName} ${lastInitial}.`
   }
 
+  const handleToggleActive = async (member) => {
+    const newStatus = !member.is_active
+    const result = await updateMember(member.id, { is_active: newStatus })
+    if (result.success) {
+      toast.success(`${member.full_name} is now ${newStatus ? 'active' : 'inactive'}`)
+    }
+  }
+
+  const handleRoleChange = async (member, newRole) => {
+    const result = await updateMember(member.id, { role: newRole })
+    if (result.success) {
+      toast.success(`${member.full_name}'s role updated to ${newRole}`)
+    }
+  }
+
+  const handleToggleCoordinator = async (member) => {
+    const newStatus = !member.is_coordinator
+    const result = await updateMember(member.id, { is_coordinator: newStatus })
+    if (result.success) {
+      toast.success(newStatus
+        ? `${member.full_name} is now a coordinator`
+        : `Coordinator role removed for ${member.full_name}`
+      )
+    }
+  }
+
   const handleAddGuest = async () => {
     if (!guestForm.full_name.trim()) {
       toast.error('Please enter guest name')
       return
     }
-    if (!guestForm.weight_kg || parseFloat(guestForm.weight_kg) <= 0) {
+    if (!guestForm.weight_lbs || parseFloat(guestForm.weight_lbs) <= 0) {
       toast.error('Please enter valid weight')
       return
     }
 
     const result = await addGuestMember({
       full_name: guestForm.full_name.trim(),
-      weight_kg: parseFloat(guestForm.weight_kg),
+      weight_kg: convertWeightForStorage(parseFloat(guestForm.weight_lbs), 'lbs'),
       skill_level: guestForm.skill_level,
       preferred_side: guestForm.preferred_side || null
     })
@@ -121,7 +151,7 @@ export default function Roster() {
       setIsGuestModalOpen(false)
       setGuestForm({
         full_name: '',
-        weight_kg: '',
+        weight_lbs: '',
         skill_level: 'novice',
         preferred_side: ''
       })
@@ -130,6 +160,7 @@ export default function Roster() {
 
   const handleEditMember = () => {
     // Populate edit form with selected member data
+    const heightFtIn = convertHeightForDisplay(selectedMember.height_cm, 'ftin')
     setEditForm({
       full_name: selectedMember.full_name || '',
       email: selectedMember.email || '',
@@ -137,8 +168,10 @@ export default function Roster() {
       role: selectedMember.role || 'member',
       skill_level: selectedMember.skill_level || '',
       preferred_side: selectedMember.preferred_side || '',
-      weight_kg: selectedMember.weight_kg || '',
-      height_cm: selectedMember.height_cm || '',
+      weight_lbs: selectedMember.weight_kg ? convertWeightForDisplay(selectedMember.weight_kg, 'lbs', 1) : '',
+      height_feet: heightFtIn?.feet || '',
+      height_inches: heightFtIn?.inches || '',
+      gender: selectedMember.gender || '',
       emergency_contact_name: selectedMember.emergency_contact_name || '',
       emergency_contact_phone: selectedMember.emergency_contact_phone || '',
       medical_notes: selectedMember.medical_notes || '',
@@ -186,8 +219,9 @@ export default function Roster() {
         role: editForm.role,
         skill_level: editForm.skill_level || null,
         preferred_side: editForm.preferred_side || null,
-        weight_kg: editForm.weight_kg ? parseFloat(editForm.weight_kg) : null,
-        height_cm: editForm.height_cm ? parseFloat(editForm.height_cm) : null,
+        weight_kg: editForm.weight_lbs ? convertWeightForStorage(parseFloat(editForm.weight_lbs), 'lbs') : null,
+        height_cm: (editForm.height_feet || editForm.height_inches) ? feetInchesToCm(editForm.height_feet, editForm.height_inches) : null,
+        gender: editForm.gender || null,
         emergency_contact_name: editForm.emergency_contact_name.trim() || null,
         emergency_contact_phone: editForm.emergency_contact_phone.trim() || null,
         medical_notes: editForm.medical_notes.trim() || null,
@@ -230,8 +264,10 @@ export default function Roster() {
       role: '',
       skill_level: '',
       preferred_side: '',
-      weight_kg: '',
-      height_cm: '',
+      weight_lbs: '',
+      height_feet: '',
+      height_inches: '',
+      gender: '',
       emergency_contact_name: '',
       emergency_contact_phone: '',
       medical_notes: '',
@@ -265,26 +301,26 @@ export default function Roster() {
 
       {/* Stats Cards - Admin Only */}
       {hasRole('admin') && (
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
-          <div className="card bg-primary-50">
-            <h3 className="text-sm font-medium text-gray-600 mb-1">Total Members</h3>
-            <p className="text-3xl font-bold text-primary-600">{stats.total}</p>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
+          <div className="stat-card">
+            <h3 className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">Total</h3>
+            <p className="text-2xl font-bold text-slate-900">{stats.total}</p>
           </div>
-          <div className="card bg-green-50">
-            <h3 className="text-sm font-medium text-gray-600 mb-1">Active</h3>
-            <p className="text-3xl font-bold text-green-600">{stats.active}</p>
+          <div className="stat-card border-l-4 border-l-green-500">
+            <h3 className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">Active</h3>
+            <p className="text-2xl font-bold text-green-600">{stats.active}</p>
           </div>
-          <div className="card bg-orange-50">
-            <h3 className="text-sm font-medium text-gray-600 mb-1">Guests</h3>
-            <p className="text-3xl font-bold text-orange-600">{stats.guests}</p>
+          <div className="stat-card border-l-4 border-l-amber-500">
+            <h3 className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">Guests</h3>
+            <p className="text-2xl font-bold text-amber-600">{stats.guests}</p>
           </div>
-          <div className="card bg-blue-50">
-            <h3 className="text-sm font-medium text-gray-600 mb-1">Coaches</h3>
-            <p className="text-3xl font-bold text-blue-600">{stats.byRole.coach}</p>
+          <div className="stat-card border-l-4 border-l-blue-500">
+            <h3 className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">Coaches</h3>
+            <p className="text-2xl font-bold text-blue-600">{stats.byRole.coach}</p>
           </div>
-          <div className="card bg-purple-50">
-            <h3 className="text-sm font-medium text-gray-600 mb-1">Admins</h3>
-            <p className="text-3xl font-bold text-purple-600">{stats.byRole.admin}</p>
+          <div className="stat-card border-l-4 border-l-purple-500">
+            <h3 className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">Admins</h3>
+            <p className="text-2xl font-bold text-purple-600">{stats.byRole.admin}</p>
           </div>
         </div>
       )}
@@ -325,7 +361,7 @@ export default function Roster() {
                 <option value="coach">Coach</option>
                 <option value="captain">Captain</option>
                 <option value="steersperson">Steersperson</option>
-                <option value="member">Member</option>
+                <option value="member">Paddler</option>
               </select>
             </div>
 
@@ -389,12 +425,15 @@ export default function Roster() {
           <thead className="bg-gray-50">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Member
+                Paddler
               </th>
               {hasRole('admin') && (
                 <>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Role
+                  </th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Coordinator
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Skill Level
@@ -415,8 +454,8 @@ export default function Roster() {
           <tbody className="bg-white divide-y divide-gray-200">
             {filteredMembers.length === 0 ? (
               <tr>
-                <td colSpan={hasRole('admin') ? "6" : "1"} className="px-6 py-8 text-center text-gray-500">
-                  No members found matching your filters
+                <td colSpan={hasRole('admin') ? "7" : "1"} className="px-6 py-8 text-center text-gray-500">
+                  No paddlers found matching your filters
                 </td>
               </tr>
             ) : (
@@ -430,6 +469,19 @@ export default function Roster() {
                           <span className="text-sm font-medium text-gray-900">
                             {hasRole('admin') ? member.full_name : formatNamePrivate(member.full_name)}
                           </span>
+                          {hasRole('admin') && (
+                            <button
+                              onClick={() => handleToggleActive(member)}
+                              className={`px-2 py-0.5 text-xs font-medium rounded transition-colors ${
+                                member.is_active
+                                  ? 'bg-success-100 text-success-700 hover:bg-success-200'
+                                  : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
+                              }`}
+                              title={`Click to set as ${member.is_active ? 'inactive' : 'active'}`}
+                            >
+                              {member.is_active ? '✓ Active' : '○ Inactive'}
+                            </button>
+                          )}
                           {member.is_guest && (
                             <span className="px-2 py-0.5 text-xs font-medium bg-orange-200 text-orange-800 rounded">
                               GUEST
@@ -453,17 +505,32 @@ export default function Roster() {
                   {hasRole('admin') && (
                     <>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full border ${getRoleBadgeColor(member.role)}`}>
-                          {member.role}
-                        </span>
+                        <select
+                          value={member.role || 'paddler'}
+                          onChange={(e) => handleRoleChange(member, e.target.value)}
+                          className="text-xs border border-slate-200 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                        >
+                          <option value="paddler">Paddler</option>
+                          <option value="coach">Coach</option>
+                          <option value="admin">Admin</option>
+                        </select>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-center">
+                        <input
+                          type="checkbox"
+                          checked={member.is_coordinator || false}
+                          onChange={() => handleToggleCoordinator(member)}
+                          className="w-4 h-4 text-primary-600 rounded focus:ring-primary-500 cursor-pointer"
+                          title={member.is_coordinator ? 'Remove coordinator privileges' : 'Grant coordinator privileges'}
+                        />
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         {member.skill_level ? (
-                          <span className={`px-2 py-1 inline-flex text-xs leading-5 font-medium rounded ${getSkillBadgeColor(member.skill_level)}`}>
+                          <span className={getSkillBadgeColor(member.skill_level)}>
                             {member.skill_level}
                           </span>
                         ) : (
-                          <span className="text-sm text-gray-400">Not set</span>
+                          <span className="text-sm text-slate-400">Not set</span>
                         )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -495,7 +562,7 @@ export default function Roster() {
           <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <div className="flex justify-between items-center mb-6">
-                <h2 className="text-2xl font-bold text-gray-900">Member Details</h2>
+                <h2 className="text-2xl font-bold text-gray-900">Paddler Details</h2>
                 <button
                   onClick={() => setIsDetailsModalOpen(false)}
                   className="text-gray-400 hover:text-gray-600 text-2xl"
@@ -545,13 +612,19 @@ export default function Roster() {
                     <div>
                       <p className="text-sm text-gray-600">Weight</p>
                       <p className="text-base font-medium text-gray-900">
-                        {selectedMember.weight_kg ? `${selectedMember.weight_kg} kg` : 'Not provided'}
+                        {selectedMember.weight_kg ? formatWeight(selectedMember.weight_kg, 'lbs', 1) : 'Not provided'}
                       </p>
                     </div>
                     <div>
                       <p className="text-sm text-gray-600">Height</p>
                       <p className="text-base font-medium text-gray-900">
-                        {selectedMember.height_cm ? `${selectedMember.height_cm} cm` : 'Not provided'}
+                        {selectedMember.height_cm ? formatHeight(selectedMember.height_cm, 'ftin') : 'Not provided'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Gender</p>
+                      <p className="text-base font-medium text-gray-900">
+                        {selectedMember.gender ? selectedMember.gender.charAt(0).toUpperCase() + selectedMember.gender.slice(1) : 'Not specified'}
                       </p>
                     </div>
                   </div>
@@ -599,7 +672,7 @@ export default function Roster() {
                     className="btn btn-primary"
                     onClick={handleEditMember}
                   >
-                    Edit Member
+                    Edit Paddler
                   </button>
                 )}
               </div>
@@ -624,7 +697,7 @@ export default function Roster() {
 
             <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 mb-4">
               <p className="text-sm text-orange-800">
-                Guest paddlers are temporary members (e.g., visitors, trial members). They can be added to lineups but are marked separately from regular team members.
+                Guest paddlers are temporary paddlers (e.g., visitors, trial paddlers). They can be added to lineups but are marked separately from regular team paddlers.
               </p>
             </div>
 
@@ -643,15 +716,15 @@ export default function Roster() {
 
               {/* Weight */}
               <div>
-                <label className="label">Weight (kg) *</label>
+                <label className="label">Weight (lbs) *</label>
                 <input
                   type="number"
                   className="input"
-                  placeholder="70"
+                  placeholder="154"
                   min="1"
                   step="0.1"
-                  value={guestForm.weight_kg}
-                  onChange={(e) => setGuestForm({ ...guestForm, weight_kg: e.target.value })}
+                  value={guestForm.weight_lbs}
+                  onChange={(e) => setGuestForm({ ...guestForm, weight_lbs: e.target.value })}
                 />
                 <p className="text-xs text-gray-500 mt-1">Required for boat balance calculations</p>
               </div>
@@ -688,11 +761,13 @@ export default function Roster() {
 
             <div className="flex justify-end gap-3 mt-6">
               <button
+                type="button"
+                onPointerDown={(e) => e.stopPropagation()}
                 onClick={() => {
                   setIsGuestModalOpen(false)
                   setGuestForm({
                     full_name: '',
-                    weight_kg: '',
+                    weight_lbs: '',
                     skill_level: 'novice',
                     preferred_side: ''
                   })
@@ -702,6 +777,8 @@ export default function Roster() {
                 Cancel
               </button>
               <button
+                type="button"
+                onPointerDown={(e) => e.stopPropagation()}
                 onClick={handleAddGuest}
                 className="btn btn-primary"
               >
@@ -718,7 +795,7 @@ export default function Roster() {
           <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <div className="flex justify-between items-center mb-6">
-                <h2 className="text-2xl font-bold text-gray-900">Edit Member</h2>
+                <h2 className="text-2xl font-bold text-gray-900">Edit Paddler</h2>
                 <button
                   onClick={handleCancelEdit}
                   className="text-gray-400 hover:text-gray-600 text-2xl"
@@ -770,7 +847,7 @@ export default function Roster() {
                         value={editForm.role}
                         onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}
                       >
-                        <option value="member">Member</option>
+                        <option value="member">Paddler</option>
                         <option value="captain">Captain</option>
                         <option value="steersperson">Steersperson</option>
                         <option value="coach">Coach</option>
@@ -822,26 +899,56 @@ export default function Roster() {
                       </select>
                     </div>
                     <div>
-                      <label className="label">Weight (kg)</label>
+                      <label className="label">Weight (lbs)</label>
                       <input
                         type="number"
                         className="input"
                         min="1"
                         step="0.1"
-                        value={editForm.weight_kg}
-                        onChange={(e) => setEditForm({ ...editForm, weight_kg: e.target.value })}
+                        value={editForm.weight_lbs}
+                        onChange={(e) => setEditForm({ ...editForm, weight_lbs: e.target.value })}
                       />
                     </div>
                     <div>
-                      <label className="label">Height (cm)</label>
-                      <input
-                        type="number"
+                      <label className="label">Height</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <input
+                            type="number"
+                            className="input"
+                            min="0"
+                            max="8"
+                            placeholder="5"
+                            value={editForm.height_feet}
+                            onChange={(e) => setEditForm({ ...editForm, height_feet: e.target.value })}
+                          />
+                          <p className="text-xs text-gray-500 mt-1">Feet</p>
+                        </div>
+                        <div>
+                          <input
+                            type="number"
+                            className="input"
+                            min="0"
+                            max="11"
+                            placeholder="10"
+                            value={editForm.height_inches}
+                            onChange={(e) => setEditForm({ ...editForm, height_inches: e.target.value })}
+                          />
+                          <p className="text-xs text-gray-500 mt-1">Inches</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="label">Gender</label>
+                      <select
                         className="input"
-                        min="1"
-                        step="1"
-                        value={editForm.height_cm}
-                        onChange={(e) => setEditForm({ ...editForm, height_cm: e.target.value })}
-                      />
+                        value={editForm.gender}
+                        onChange={(e) => setEditForm({ ...editForm, gender: e.target.value })}
+                      >
+                        <option value="">Prefer not to say</option>
+                        <option value="male">Male</option>
+                        <option value="female">Female</option>
+                      </select>
                     </div>
                   </div>
                 </div>
@@ -923,6 +1030,8 @@ export default function Roster() {
 
               <div className="flex justify-end gap-3 pt-6 mt-6 border-t">
                 <button
+                  type="button"
+                  onPointerDown={(e) => e.stopPropagation()}
                   onClick={handleCancelEdit}
                   className="btn btn-secondary"
                   disabled={isSaving}
@@ -930,6 +1039,8 @@ export default function Roster() {
                   Cancel
                 </button>
                 <button
+                  type="button"
+                  onPointerDown={(e) => e.stopPropagation()}
                   onClick={handleSaveEdit}
                   className="btn btn-primary"
                   disabled={isSaving}

@@ -2,10 +2,50 @@ import { create } from 'zustand'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 
+// Queue for pending operations that need to be synced when connection recovers
+let pendingOperations = []
+let isSyncing = false
+
+// Process pending operations when connection is available
+const processPendingOperations = async () => {
+  if (isSyncing || pendingOperations.length === 0) return
+  isSyncing = true
+
+  while (pendingOperations.length > 0) {
+    const op = pendingOperations[0]
+    try {
+      await op.execute()
+      pendingOperations.shift() // Remove successful operation
+    } catch (err) {
+      break // Stop processing, will retry later
+    }
+  }
+
+  isSyncing = false
+}
+
+// Listen for visibility changes to process pending operations
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      // Delay slightly to let network stabilize
+      setTimeout(processPendingOperations, 1000)
+    }
+  })
+
+  // Also try processing periodically
+  setInterval(() => {
+    if (document.visibilityState === 'visible') {
+      processPendingOperations()
+    }
+  }, 30000) // Every 30 seconds
+}
+
 export const usePracticeStore = create((set, get) => ({
   practices: [],
   rsvps: {},
   loading: false,
+  pendingRsvps: {}, // Track optimistic updates: { `${practiceId}_${userId}`: status }
 
   // Fetch all practices
   fetchPractices: async () => {
@@ -30,7 +70,7 @@ export const usePracticeStore = create((set, get) => ({
   // Fetch RSVPs for a specific practice
   fetchRSVPs: async (practiceId) => {
     try {
-      const { data, error } = await supabase
+      const { data, error} = await supabase
         .from('rsvps')
         .select(`
           *,
@@ -49,6 +89,34 @@ export const usePracticeStore = create((set, get) => ({
       }))
     } catch (error) {
       console.error('Error fetching RSVPs:', error)
+    }
+  },
+
+  // Fetch RSVPs for a specific event (unified system)
+  fetchEventRSVPs: async (eventId) => {
+    try {
+      const { data, error } = await supabase
+        .from('rsvps')
+        .select(`
+          *,
+          user:profiles!rsvps_user_id_fkey(id, full_name, email, is_guest),
+          checked_in_by_profile:profiles!rsvps_checked_in_by_fkey(id, full_name)
+        `)
+        .eq('event_id', eventId)
+
+      if (error) throw error
+
+      set((state) => ({
+        rsvps: {
+          ...state.rsvps,
+          [`event_${eventId}`]: data || []
+        }
+      }))
+
+      return data || []
+    } catch (error) {
+      console.error('Error fetching event RSVPs:', error)
+      return []
     }
   },
 
@@ -128,43 +196,240 @@ export const usePracticeStore = create((set, get) => ({
     }
   },
 
-  // Create or update RSVP
+  // Create or update RSVP with optimistic updates
   setRSVP: async (practiceId, userId, status, notes = '') => {
-    try {
-      console.log('Setting RSVP:', { practiceId, userId, status, notes })
+    const key = `${practiceId}_${userId}`
 
-      const { data, error } = await supabase
-        .from('rsvps')
-        .upsert({
+    // Handle null status = delete/clear RSVP
+    if (status === null) {
+      // 1. OPTIMISTIC UPDATE - Remove from UI immediately
+      set((state) => {
+        const currentRsvps = state.rsvps[practiceId] || []
+        const updatedRsvps = currentRsvps.filter(r => r.user_id !== userId)
+        return {
+          rsvps: { ...state.rsvps, [practiceId]: updatedRsvps },
+          pendingRsvps: { ...state.pendingRsvps, [key]: 'deleting' }
+        }
+      })
+
+      toast.success('RSVP cleared', { duration: 1500 })
+
+      // 2. BACKGROUND SYNC - Delete from database
+      try {
+        const { error } = await supabase
+          .from('rsvps')
+          .delete()
+          .eq('practice_id', practiceId)
+          .eq('user_id', userId)
+
+        if (error) throw error
+
+        set((state) => {
+          const newPending = { ...state.pendingRsvps }
+          delete newPending[key]
+          return { pendingRsvps: newPending }
+        })
+
+        await get().fetchRSVPs(practiceId)
+      } catch (err) {
+        console.error('Failed to delete RSVP:', err)
+        toast.error('Failed to clear RSVP')
+        await get().fetchRSVPs(practiceId)
+      }
+
+      return { success: true }
+    }
+
+    // 1. OPTIMISTIC UPDATE - Update UI immediately
+    set((state) => {
+      const currentRsvps = state.rsvps[practiceId] || []
+      const existingIndex = currentRsvps.findIndex(r => r.user_id === userId)
+
+      let updatedRsvps
+      if (existingIndex >= 0) {
+        // Update existing RSVP in local state
+        updatedRsvps = [...currentRsvps]
+        updatedRsvps[existingIndex] = {
+          ...updatedRsvps[existingIndex],
+          status,
+          notes
+        }
+      } else {
+        // Add new RSVP to local state
+        updatedRsvps = [...currentRsvps, {
           practice_id: practiceId,
           user_id: userId,
           status,
           notes,
-          // Initialize attendance fields as null for new RSVPs
           attended: false,
-          member_notes: null,
-          checked_in_at: null,
-          checked_in_by: null
-        }, {
-          onConflict: 'practice_id,user_id',
-          ignoreDuplicates: false
-        })
-        .select()
-
-      if (error) {
-        console.error('Supabase error:', error)
-        throw error
+          _optimistic: true // Mark as optimistic
+        }]
       }
 
-      console.log('RSVP set successfully:', data)
+      return {
+        rsvps: { ...state.rsvps, [practiceId]: updatedRsvps },
+        pendingRsvps: { ...state.pendingRsvps, [key]: status }
+      }
+    })
+
+    // Show immediate feedback
+    toast.success(`RSVP: ${status.charAt(0).toUpperCase() + status.slice(1)}`, { duration: 1500 })
+
+    // 2. BACKGROUND SYNC - Try to sync with server
+    const syncOperation = async () => {
+      // Check if RSVP exists
+      const { data: existing } = await supabase
+        .from('rsvps')
+        .select('id')
+        .eq('practice_id', practiceId)
+        .eq('user_id', userId)
+        .single()
+
+      let result
+      if (existing) {
+        result = await supabase
+          .from('rsvps')
+          .update({ status, notes })
+          .eq('practice_id', practiceId)
+          .eq('user_id', userId)
+          .select()
+      } else {
+        result = await supabase
+          .from('rsvps')
+          .insert({
+            practice_id: practiceId,
+            user_id: userId,
+            status,
+            notes,
+            attended: false,
+            member_notes: null,
+            checked_in_at: null,
+            checked_in_by: null
+          })
+          .select()
+      }
+
+      if (result.error) throw result.error
+
+      // Clear pending status and refresh from server
+      set((state) => {
+        const newPending = { ...state.pendingRsvps }
+        delete newPending[key]
+        return { pendingRsvps: newPending }
+      })
+
+      // Refresh from server to get accurate data
+      await get().fetchRSVPs(practiceId)
+    }
+
+    // Try immediate sync with short timeout
+    const trySync = async () => {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 5000)
+
+      try {
+        await syncOperation()
+        clearTimeout(timeoutId)
+        return true
+      } catch (err) {
+        clearTimeout(timeoutId)
+        return false
+      }
+    }
+
+    const synced = await trySync()
+
+    if (!synced) {
+      // Queue for later sync
+      pendingOperations.push({
+        type: 'setRSVP',
+        key,
+        execute: syncOperation
+      })
+
+      // Show subtle indicator that sync is pending
+      toast('Syncing in background...', {
+        icon: '⏳',
+        duration: 2000
+      })
+    }
+
+    return { success: true }
+  },
+
+  // Create or update event RSVP (unified system)
+  setEventRSVP: async (eventId, userId, status, role = null, notes = null) => {
+    try {
+      // First, check if RSVP exists
+      const { data: existing } = await supabase
+        .from('rsvps')
+        .select('id')
+        .eq('event_id', eventId)
+        .eq('user_id', userId)
+        .single()
+
+      let result
+      if (existing) {
+        // Update existing RSVP
+        result = await supabase
+          .from('rsvps')
+          .update({
+            status,
+            role,
+            response_notes: notes
+          })
+          .eq('event_id', eventId)
+          .eq('user_id', userId)
+          .select()
+      } else {
+        // Insert new RSVP
+        result = await supabase
+          .from('rsvps')
+          .insert({
+            event_id: eventId,
+            user_id: userId,
+            status,
+            role,
+            response_notes: notes,
+            registered_at: new Date().toISOString()
+          })
+          .select()
+      }
+
+      const { data, error } = result
+
+      if (error) throw error
+
+      // Refresh RSVPs for this event
+      await get().fetchEventRSVPs(eventId)
+
+      toast.success('RSVP updated!')
+      return { success: true }
+    } catch (error) {
+      console.error('Error setting event RSVP:', error)
+      toast.error(error.message)
+      return { success: false, error }
+    }
+  },
+
+  // Delete/Clear RSVP
+  deleteRSVP: async (practiceId, userId) => {
+    try {
+      const { error } = await supabase
+        .from('rsvps')
+        .delete()
+        .eq('practice_id', practiceId)
+        .eq('user_id', userId)
+
+      if (error) throw error
 
       // Refresh RSVPs for this practice
       await get().fetchRSVPs(practiceId)
 
-      toast.success(`RSVP updated: ${status}`)
+      toast.success('RSVP cleared')
       return { success: true }
     } catch (error) {
-      console.error('Error setting RSVP:', error)
+      console.error('Error deleting RSVP:', error)
       toast.error(error.message)
       return { success: false, error }
     }
@@ -184,6 +449,23 @@ export const usePracticeStore = create((set, get) => ({
   // Get user's RSVP for a practice
   getUserRSVP: (practiceId, userId) => {
     const rsvps = get().rsvps[practiceId] || []
+    return rsvps.find(r => r.user_id === userId)
+  },
+
+  // Get RSVP count for an event (unified system)
+  getEventRSVPCount: (eventId) => {
+    const rsvps = get().rsvps[`event_${eventId}`] || []
+    return {
+      yes: rsvps.filter(r => r.status === 'yes').length,
+      no: rsvps.filter(r => r.status === 'no').length,
+      maybe: rsvps.filter(r => r.status === 'maybe').length,
+      total: rsvps.length
+    }
+  },
+
+  // Get user's RSVP for an event (unified system)
+  getUserEventRSVP: (eventId, userId) => {
+    const rsvps = get().rsvps[`event_${eventId}`] || []
     return rsvps.find(r => r.user_id === userId)
   },
 
@@ -245,24 +527,45 @@ export const usePracticeStore = create((set, get) => ({
   // Add attendance for someone who didn't RSVP
   addAttendance: async (practiceId, userId, memberNotes = '', checkedInBy = null) => {
     try {
-      // Don't set status - leave it NULL to indicate they didn't RSVP
-      // This lets us track walk-ins vs. people who RSVP'd yes
-      const { error } = await supabase
+      // Check if RSVP exists first
+      const { data: existing } = await supabase
         .from('rsvps')
-        .upsert({
-          practice_id: practiceId,
-          user_id: userId,
-          status: null, // NULL = no RSVP, just walked in
-          notes: null,
-          attended: true,
-          member_notes: memberNotes,
-          checked_in_at: new Date().toISOString(),
-          checked_in_by: checkedInBy
-        }, {
-          onConflict: 'practice_id,user_id'
-        })
+        .select('id')
+        .eq('practice_id', practiceId)
+        .eq('user_id', userId)
+        .single()
 
-      if (error) throw error
+      const attendanceData = {
+        attended: true,
+        member_notes: memberNotes,
+        checked_in_at: new Date().toISOString(),
+        checked_in_by: checkedInBy
+      }
+
+      let result
+      if (existing) {
+        // Update existing RSVP with attendance
+        result = await supabase
+          .from('rsvps')
+          .update(attendanceData)
+          .eq('practice_id', practiceId)
+          .eq('user_id', userId)
+          .select()
+      } else {
+        // Insert new RSVP for walk-in (no prior RSVP)
+        result = await supabase
+          .from('rsvps')
+          .insert({
+            practice_id: practiceId,
+            user_id: userId,
+            status: null, // NULL = no RSVP, just walked in
+            notes: null,
+            ...attendanceData
+          })
+          .select()
+      }
+
+      if (result.error) throw result.error
 
       // Refresh RSVPs for this practice
       await get().fetchRSVPs(practiceId)
@@ -305,13 +608,37 @@ export const usePracticeStore = create((set, get) => ({
   // Update member notes only
   updateMemberNotes: async (practiceId, userId, memberNotes) => {
     try {
-      const { error } = await supabase
+      // Check if RSVP exists first
+      const { data: existing } = await supabase
         .from('rsvps')
-        .update({ member_notes: memberNotes })
+        .select('id')
         .eq('practice_id', practiceId)
         .eq('user_id', userId)
+        .single()
 
-      if (error) throw error
+      let result
+      if (existing) {
+        // Update existing RSVP with notes
+        result = await supabase
+          .from('rsvps')
+          .update({ member_notes: memberNotes })
+          .eq('practice_id', practiceId)
+          .eq('user_id', userId)
+          .select()
+      } else {
+        // Insert new RSVP for member who didn't RSVP but has notes
+        result = await supabase
+          .from('rsvps')
+          .insert({
+            practice_id: practiceId,
+            user_id: userId,
+            status: null, // NULL = no RSVP, just has notes
+            member_notes: memberNotes
+          })
+          .select()
+      }
+
+      if (result.error) throw result.error
 
       // Refresh RSVPs for this practice
       await get().fetchRSVPs(practiceId)
@@ -597,5 +924,263 @@ export const usePracticeStore = create((set, get) => ({
   // Get all instances of a recurring series
   getSeriesInstances: (parentId) => {
     return get().practices.filter(p => p.parent_practice_id === parentId)
+  },
+
+  // Self check-in with optional geolocation
+  selfCheckIn: async (practiceId, userId, location = null) => {
+    try {
+      // Check if RSVP exists
+      const { data: existing } = await supabase
+        .from('rsvps')
+        .select('id')
+        .eq('practice_id', practiceId)
+        .eq('user_id', userId)
+        .single()
+
+      const checkInData = {
+        attended: true,
+        checked_in_at: new Date().toISOString(),
+        checked_in_by: null, // NULL = self check-in
+        check_in_lat: location?.latitude || null,
+        check_in_lng: location?.longitude || null,
+        check_in_accuracy: location?.accuracy || null
+      }
+
+      let result
+      if (existing) {
+        result = await supabase
+          .from('rsvps')
+          .update(checkInData)
+          .eq('practice_id', practiceId)
+          .eq('user_id', userId)
+          .select()
+      } else {
+        // Create RSVP with check-in (walk-in scenario)
+        result = await supabase
+          .from('rsvps')
+          .insert({
+            practice_id: practiceId,
+            user_id: userId,
+            status: null, // No prior RSVP
+            ...checkInData
+          })
+          .select()
+      }
+
+      if (result.error) throw result.error
+
+      await get().fetchRSVPs(practiceId)
+      toast.success('Checked in successfully!')
+      return { success: true }
+    } catch (error) {
+      console.error('Error checking in:', error)
+      toast.error(error.message)
+      return { success: false, error }
+    }
+  },
+
+  // Self check-in for events
+  selfCheckInEvent: async (eventId, userId, location = null) => {
+    try {
+      const { data: existing } = await supabase
+        .from('rsvps')
+        .select('id')
+        .eq('event_id', eventId)
+        .eq('user_id', userId)
+        .single()
+
+      const checkInData = {
+        attended: true,
+        checked_in_at: new Date().toISOString(),
+        checked_in_by: null,
+        check_in_lat: location?.latitude || null,
+        check_in_lng: location?.longitude || null,
+        check_in_accuracy: location?.accuracy || null
+      }
+
+      let result
+      if (existing) {
+        result = await supabase
+          .from('rsvps')
+          .update(checkInData)
+          .eq('event_id', eventId)
+          .eq('user_id', userId)
+          .select()
+      } else {
+        result = await supabase
+          .from('rsvps')
+          .insert({
+            event_id: eventId,
+            user_id: userId,
+            status: null,
+            registered_at: new Date().toISOString(),
+            ...checkInData
+          })
+          .select()
+      }
+
+      if (result.error) throw result.error
+
+      await get().fetchEventRSVPs(eventId)
+      toast.success('Checked in successfully!')
+      return { success: true }
+    } catch (error) {
+      console.error('Error checking in:', error)
+      toast.error(error.message)
+      return { success: false, error }
+    }
+  },
+
+  // Undo self check-in
+  undoCheckIn: async (practiceId, userId) => {
+    try {
+      const { error } = await supabase
+        .from('rsvps')
+        .update({
+          attended: false,
+          checked_in_at: null,
+          checked_in_by: null,
+          check_in_lat: null,
+          check_in_lng: null,
+          check_in_accuracy: null
+        })
+        .eq('practice_id', practiceId)
+        .eq('user_id', userId)
+
+      if (error) throw error
+
+      await get().fetchRSVPs(practiceId)
+      toast.success('Check-in undone')
+      return { success: true }
+    } catch (error) {
+      console.error('Error undoing check-in:', error)
+      toast.error(error.message)
+      return { success: false, error }
+    }
+  },
+
+  // Undo event check-in
+  undoEventCheckIn: async (eventId, userId) => {
+    try {
+      const { error } = await supabase
+        .from('rsvps')
+        .update({
+          attended: false,
+          checked_in_at: null,
+          checked_in_by: null,
+          check_in_lat: null,
+          check_in_lng: null,
+          check_in_accuracy: null
+        })
+        .eq('event_id', eventId)
+        .eq('user_id', userId)
+
+      if (error) throw error
+
+      await get().fetchEventRSVPs(eventId)
+      toast.success('Check-in undone')
+      return { success: true }
+    } catch (error) {
+      console.error('Error undoing check-in:', error)
+      toast.error(error.message)
+      return { success: false, error }
+    }
+  },
+
+  // Toggle practice visibility (admin/coach/manager only)
+  togglePracticeVisibility: async (id, isVisible) => {
+    try {
+      const { data, error } = await supabase
+        .from('practices')
+        .update({ is_visible_to_members: isVisible })
+        .eq('id', id)
+        .select()
+        .single()
+
+      if (error) throw error
+
+      set((state) => ({
+        practices: state.practices.map((p) =>
+          p.id === id ? data : p
+        )
+      }))
+
+      toast.success(isVisible ? 'Practice is now visible to members' : 'Practice is now hidden from members')
+      return { success: true }
+    } catch (error) {
+      console.error('Error toggling practice visibility:', error)
+      toast.error(error.message)
+      return { success: false, error }
+    }
+  },
+
+  // Admin/coach toggle event check-in for a member
+  adminToggleEventCheckIn: async (eventId, memberId, isCheckedIn, adminId) => {
+    try {
+      // First check if RSVP exists
+      const { data: existing } = await supabase
+        .from('rsvps')
+        .select('id')
+        .eq('event_id', eventId)
+        .eq('user_id', memberId)
+        .maybeSingle()
+
+      if (isCheckedIn) {
+        // Mark as checked in
+        const checkInData = {
+          attended: true,
+          checked_in_at: new Date().toISOString(),
+          checked_in_by: adminId
+        }
+
+        if (existing) {
+          await supabase
+            .from('rsvps')
+            .update(checkInData)
+            .eq('event_id', eventId)
+            .eq('user_id', memberId)
+        } else {
+          await supabase
+            .from('rsvps')
+            .insert({
+              event_id: eventId,
+              user_id: memberId,
+              status: 'yes',
+              ...checkInData
+            })
+        }
+      } else {
+        // Undo check-in
+        if (existing) {
+          await supabase
+            .from('rsvps')
+            .update({
+              attended: false,
+              checked_in_at: null,
+              checked_in_by: null,
+              check_in_lat: null,
+              check_in_lng: null,
+              check_in_accuracy: null
+            })
+            .eq('event_id', eventId)
+            .eq('user_id', memberId)
+        }
+      }
+
+      // Fetch updated RSVPs and sync to both stores
+      const data = await get().fetchEventRSVPs(eventId)
+
+      // Also update eventStore for sync (lazy import to avoid circular dependency)
+      const { useEventStore } = await import('./eventStore')
+      useEventStore.setState((state) => ({
+        rsvps: { ...state.rsvps, [eventId]: data }
+      }))
+
+      return { success: true }
+    } catch (error) {
+      console.error('Error toggling check-in:', error)
+      toast.error(error.message)
+      return { success: false, error }
+    }
   }
 }))

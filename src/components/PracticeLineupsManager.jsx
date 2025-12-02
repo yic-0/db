@@ -4,6 +4,7 @@ import { useLineupStore } from '../store/lineupStore'
 import { useRosterStore } from '../store/rosterStore'
 import toast from 'react-hot-toast'
 import LineupViewer from './LineupViewer'
+import Icon from './Icon'
 
 export default function PracticeLineupsManager({ practice }) {
   const navigate = useNavigate()
@@ -81,7 +82,7 @@ export default function PracticeLineupsManager({ practice }) {
       ...(positions.paddlers?.right || [])
     ].filter(Boolean).length
 
-    return `${filledCount}/22 positions filled`
+    return `${filledCount}/22`
   }
 
   // Filter out lineups already linked to this practice
@@ -93,76 +94,86 @@ export default function PracticeLineupsManager({ practice }) {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-lg font-semibold text-gray-900">Practice Lineups</h3>
-          <p className="text-sm text-gray-600">
-            {practiceLineups.length} {practiceLineups.length === 1 ? 'boat' : 'boats'} configured
-          </p>
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-primary-100 rounded-xl flex items-center justify-center text-primary-600">
+            <Icon name="boat" size={20} />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-slate-900">Boat Lineups</h3>
+            <p className="text-sm text-slate-500">
+              {practiceLineups.length} {practiceLineups.length === 1 ? 'boat' : 'boats'} configured
+            </p>
+          </div>
         </div>
         <div className="flex gap-2">
           <button
             onClick={() => setShowLinkModal(true)}
-            className="btn-secondary text-sm"
+            className="btn btn-secondary text-sm flex items-center gap-2"
           >
-            + Link Existing Lineup
+            <Icon name="plus" size={16} /> Link Existing
           </button>
           <button
             onClick={() => navigate('/lineups')}
-            className="btn-primary text-sm"
+            className="btn btn-primary text-sm flex items-center gap-2"
           >
-            + Create New Lineup
+            <Icon name="plus" size={16} /> Create New
           </button>
         </div>
       </div>
 
       {/* Practice Lineups List */}
       {practiceLineups.length === 0 ? (
-        <div className="card text-center py-8">
-          <p className="text-gray-600 mb-4">No lineups linked to this practice yet</p>
-          <p className="text-sm text-gray-500">
-            Link an existing lineup or create a new one to get started
+        <div className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl p-8 text-center flex flex-col items-center justify-center">
+          <div className="w-16 h-16 bg-white rounded-full shadow-sm flex items-center justify-center mb-4">
+            <Icon name="lineups" size={32} className="text-slate-300" />
+          </div>
+          <h4 className="text-lg font-semibold text-slate-900 mb-1">No Lineups Linked</h4>
+          <p className="text-slate-500 max-w-sm text-sm">
+            Link an existing lineup or create a new one to assign paddlers to boats for this practice.
           </p>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="grid grid-cols-1 gap-6">
           {practiceLineups.map((lineup, index) => (
-            <div key={lineup.id} className="border rounded-lg overflow-hidden">
+            <div key={lineup.id} className="card p-0 overflow-hidden border border-slate-200 hover:border-primary-200 transition-colors">
               {/* Lineup Header */}
-              <div className="bg-gray-50 p-4 flex items-center justify-between border-b">
+              <div className="bg-slate-50/80 p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
-                  <span className="px-3 py-1 bg-primary-600 text-white rounded-full text-sm font-medium">
+                  <span className="px-3 py-1 bg-slate-900 text-white rounded-lg text-xs font-bold uppercase tracking-wide shadow-sm">
                     {lineup.boat_name || `Boat ${index + 1}`}
                   </span>
                   <div>
-                    <h4 className="font-semibold text-gray-900">{lineup.name}</h4>
-                    <p className="text-sm text-gray-600">
-                      {getPositionSummary(lineup.positions)}
-                      <span className="mx-2">•</span>
-                      Created by {lineup.created_by_profile?.full_name}
-                    </p>
+                    <h4 className="font-bold text-slate-900">{lineup.name}</h4>
+                    <div className="flex items-center gap-2 text-xs text-slate-500 mt-0.5">
+                      <span className="flex items-center gap-1 bg-white px-1.5 py-0.5 rounded border border-slate-200">
+                        <Icon name="roster" size={12} /> {getPositionSummary(lineup.positions)}
+                      </span>
+                      <span>•</span>
+                      <span>Created by {lineup.created_by_profile?.full_name}</span>
+                    </div>
                   </div>
                 </div>
 
                 <div className="flex gap-2">
                   <button
                     onClick={() => handleViewLineup(lineup.id)}
-                    className="btn-secondary text-sm"
+                    className="btn btn-sm btn-secondary flex items-center gap-1.5"
                     title="Edit in lineup builder"
                   >
-                    ✏️ Edit
+                    <Icon name="edit" size={14} /> Edit
                   </button>
                   <button
                     onClick={() => handleUnlinkLineup(lineup.id)}
-                    className="text-sm text-red-600 hover:text-red-700 px-3 py-1"
+                    className="btn btn-sm bg-white border border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 flex items-center gap-1.5"
                     title="Remove from this practice"
                   >
-                    Unlink
+                    <Icon name="close" size={14} /> Unlink
                   </button>
                 </div>
               </div>
 
               {/* Embedded Lineup Viewer */}
-              <div className="bg-white p-4">
+              <div className="p-4">
                 <LineupViewer lineup={lineup} isOpen={true} />
               </div>
             </div>
@@ -172,73 +183,73 @@ export default function PracticeLineupsManager({ practice }) {
 
       {/* Link Lineup Modal */}
       {showLinkModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
-            <div className="p-6">
-              <h3 className="text-xl font-semibold text-gray-900 mb-4">
-                Link Lineup to Practice
-              </h3>
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full flex flex-col">
+            <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
+              <h3 className="text-xl font-bold text-slate-900">Link Lineup</h3>
+              <button onClick={() => setShowLinkModal(false)} className="text-slate-400 hover:text-slate-600">
+                <Icon name="close" size={20} />
+              </button>
+            </div>
 
-              <div className="space-y-4">
-                {/* Lineup Selection */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Select Lineup
-                  </label>
-                  <select
-                    value={selectedLineupId}
-                    onChange={(e) => setSelectedLineupId(e.target.value)}
-                    className="input"
-                  >
-                    <option value="">Choose a lineup...</option>
-                    {availableLineups
-                      .filter(l => l.practice_id !== practice.id)
-                      .map((lineup) => (
-                        <option key={lineup.id} value={lineup.id}>
-                          {lineup.name} ({getPositionSummary(lineup.positions)})
-                        </option>
-                      ))}
-                  </select>
-                </div>
-
-                {/* Boat Name */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Boat Name/Number
-                  </label>
-                  <input
-                    type="text"
-                    value={boatName}
-                    onChange={(e) => setBoatName(e.target.value)}
-                    placeholder={`Boat ${practiceLineups.length + 1}`}
-                    className="input"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Optional - used to identify boats when you have multiple
-                  </p>
-                </div>
+            <div className="p-6 space-y-6">
+              {/* Lineup Selection */}
+              <div>
+                <label className="label">Select Lineup</label>
+                <select
+                  value={selectedLineupId}
+                  onChange={(e) => setSelectedLineupId(e.target.value)}
+                  className="input"
+                >
+                  <option value="">Choose a lineup...</option>
+                  {availableLineups
+                    .filter(l => l.practice_id !== practice.id)
+                    .map((lineup) => (
+                      <option key={lineup.id} value={lineup.id}>
+                        {lineup.name} ({getPositionSummary(lineup.positions)})
+                      </option>
+                    ))}
+                </select>
+                {availableLineups.length === 0 && (
+                   <p className="text-xs text-slate-500 mt-2">No available lineups found.</p>
+                )}
               </div>
 
-              <div className="flex gap-3 mt-6">
-                <button
-                  onClick={() => {
-                    setShowLinkModal(false)
-                    setSelectedLineupId('')
-                    setBoatName('')
-                  }}
-                  className="btn-secondary flex-1"
-                  disabled={loading}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleLinkLineup}
-                  className="btn-primary flex-1"
-                  disabled={loading || !selectedLineupId}
-                >
-                  {loading ? 'Linking...' : 'Link Lineup'}
-                </button>
+              {/* Boat Name */}
+              <div>
+                <label className="label">Boat Name</label>
+                <input
+                  type="text"
+                  value={boatName}
+                  onChange={(e) => setBoatName(e.target.value)}
+                  placeholder={`e.g. Boat ${practiceLineups.length + 1}`}
+                  className="input"
+                />
+                <p className="text-xs text-slate-500 mt-1">
+                  Optional identifier if you have multiple boats.
+                </p>
               </div>
+            </div>
+
+            <div className="p-4 border-t border-slate-100 bg-slate-50 rounded-b-2xl flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowLinkModal(false)
+                  setSelectedLineupId('')
+                  setBoatName('')
+                }}
+                className="btn btn-secondary"
+                disabled={loading}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleLinkLineup}
+                className="btn btn-primary"
+                disabled={loading || !selectedLineupId}
+              >
+                {loading ? 'Linking...' : 'Link Lineup'}
+              </button>
             </div>
           </div>
         </div>

@@ -1,54 +1,106 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd'
 import { useLineupStore } from '../store/lineupStore'
 import { useRosterStore } from '../store/rosterStore'
 import { useAuthStore } from '../store/authStore'
 import { usePracticeStore } from '../store/practiceStore'
+import { useEventStore } from '../store/eventStore'
 import toast from 'react-hot-toast'
 import DragonBoatCogPanel from '../components/DragonBoatCogPanel'
 import DragonBoatLeftRightPanel from '../components/DragonBoatLeftRightPanel'
+import { computeSeatMomentsForLineup, computeCenterOfGravity, computeLeftRightDistribution } from '../lib/dragonboatCog'
+import Icon from '../components/Icon'
 
 export default function Lineups() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const { lineups, currentLineup, loading, fetchLineups, createLineup, updateLineup, deleteLineup, setCurrentLineup, clearCurrentLineup } = useLineupStore()
+  const { lineups, currentLineup, loading, fetchLineups, createLineup, updateLineup, deleteLineup } = useLineupStore()
   const { members, fetchMembers } = useRosterStore()
   const { user, hasRole } = useAuthStore()
-  const { practices, rsvps, fetchPractices, fetchRSVPs } = usePracticeStore()
+  const { practices, rsvps, fetchPractices, fetchRSVPs, fetchEventRSVPs } = usePracticeStore()
+  const { events, fetchEvents } = useEventStore()
 
   const [isCreating, setIsCreating] = useState(false)
-  const [editingLineupId, setEditingLineupId] = useState(null) // Track which lineup is being edited
+  const [editingLineupId, setEditingLineupId] = useState(null)
   const [lineupName, setLineupName] = useState('')
   const [lineupNotes, setLineupNotes] = useState('')
   const [selectedPracticeId, setSelectedPracticeId] = useState('')
+  const [selectedEventId, setSelectedEventId] = useState('')
   const [rsvpFilter, setRsvpFilter] = useState('all')
-  const [boatRows, setBoatRows] = useState(10) // Number of rows (pairs), default 10
-  const [unitSystem, setUnitSystem] = useState('metric') // 'metric' | 'imperial'
-  // Always allow secondary placements for quick alternates
-  const comparisonMode = true
+  const [boatRows, setBoatRows] = useState(10)
+  const [unitSystem, setUnitSystem] = useState('imperial')
+  const [showComparison, setShowComparison] = useState(false)
+  const [showBalancePanels, setShowBalancePanels] = useState(true)
+  const [showAvailableMembers, setShowAvailableMembers] = useState(true)
+  const [showSavedLineups, setShowSavedLineups] = useState(false)
+  const [isSaveAs, setIsSaveAs] = useState(false)
+
+  // Draggable bottom sheet state
+  const [drawerHeight, setDrawerHeight] = useState(140) // Initial collapsed height
+  const [isDraggingDrawer, setIsDraggingDrawer] = useState(false)
+  const drawerRef = useRef(null)
+  const dragStartY = useRef(0)
+  const dragStartHeight = useRef(0)
+
+  // Snap points for the drawer (in pixels from bottom)
+  const DRAWER_MIN = 100
+  const DRAWER_MID = Math.min(400, typeof window !== 'undefined' ? window.innerHeight * 0.5 : 400)
+  const DRAWER_MAX = typeof window !== 'undefined' ? window.innerHeight * 0.85 : 600
+
+  // Handle drawer drag
+  const handleDrawerTouchStart = useCallback((e) => {
+    if (e.target.closest('.member-card-draggable')) return // Don't interfere with DnD
+    setIsDraggingDrawer(true)
+    dragStartY.current = e.touches[0].clientY
+    dragStartHeight.current = drawerHeight
+  }, [drawerHeight])
+
+  const handleDrawerTouchMove = useCallback((e) => {
+    if (!isDraggingDrawer) return
+    const deltaY = dragStartY.current - e.touches[0].clientY
+    const newHeight = Math.max(DRAWER_MIN, Math.min(DRAWER_MAX, dragStartHeight.current + deltaY))
+    setDrawerHeight(newHeight)
+  }, [isDraggingDrawer])
+
+  const handleDrawerTouchEnd = useCallback(() => {
+    if (!isDraggingDrawer) return
+    setIsDraggingDrawer(false)
+
+    // Snap to nearest point
+    const snapPoints = [DRAWER_MIN, DRAWER_MID, DRAWER_MAX]
+    const closest = snapPoints.reduce((prev, curr) =>
+      Math.abs(curr - drawerHeight) < Math.abs(prev - drawerHeight) ? curr : prev
+    )
+    setDrawerHeight(closest)
+  }, [isDraggingDrawer, drawerHeight])
+
+  // Quick snap buttons
+  const snapDrawerTo = (target) => {
+    setDrawerHeight(target)
+  }
 
   // Available members pool
   const [availableMembers, setAvailableMembers] = useState([])
 
-  // Boat positions (paddlers + steersperson + drummer + alternates)
-  // Each position can have primary and secondary (for comparison)
+  // Boat positions
   const [boatPositions, setBoatPositions] = useState({
     drummer: null,
     drummer_secondary: null,
-    left: Array(10).fill(null),  // Positions 1-10 on left (will resize based on boatRows)
+    left: Array(10).fill(null),
     left_secondary: Array(10).fill(null),
-    right: Array(10).fill(null), // Positions 1-10 on right (will resize based on boatRows)
+    right: Array(10).fill(null),
     right_secondary: Array(10).fill(null),
     steersperson: null,
     steersperson_secondary: null,
-    alternates: [null, null, null, null] // 4 alternate slots
+    alternates: [null, null, null, null]
   })
 
   useEffect(() => {
     fetchLineups()
     fetchMembers()
     fetchPractices()
-  }, [fetchLineups, fetchMembers, fetchPractices])
+    fetchEvents()
+  }, [fetchLineups, fetchMembers, fetchPractices, fetchEvents])
 
   // Handle URL parameter to load a specific lineup
   useEffect(() => {
@@ -57,42 +109,58 @@ export default function Lineups() {
       const lineup = lineups.find(l => l.id === lineupId)
       if (lineup) {
         handleLoadLineup(lineup)
-        // Remove the URL parameter after loading
         searchParams.delete('lineup')
         setSearchParams(searchParams, { replace: true })
       }
     }
   }, [searchParams, lineups])
 
-  // Fetch RSVPs when a practice is selected
+  // Handle URL parameter when creating lineup for an event
+  useEffect(() => {
+    const eventId = searchParams.get('event')
+    const eventName = searchParams.get('eventName')
+    if (eventId && eventName && !isCreating) {
+      setLineupName(decodeURIComponent(eventName))
+      setIsCreating(true)
+      searchParams.delete('event')
+      searchParams.delete('eventName')
+      setSearchParams(searchParams, { replace: true })
+    }
+  }, [searchParams])
+
+  // Fetch RSVPs when a practice or event is selected
   useEffect(() => {
     if (selectedPracticeId) {
       fetchRSVPs(selectedPracticeId)
+    } else if (selectedEventId) {
+      fetchEventRSVPs(selectedEventId)
     }
-  }, [selectedPracticeId, fetchRSVPs])
+  }, [selectedPracticeId, selectedEventId, fetchRSVPs, fetchEventRSVPs])
 
-  // Filter and sort members based on practice RSVP
+  // Filter and sort members based on practice or event RSVP
   useEffect(() => {
-    let filtered = members.filter(m => m.is_active)
+    let filtered = (members || []).filter(m => m.is_active)
 
-    // If a practice is selected, filter by RSVP status
+    let rsvpData = null
     if (selectedPracticeId && rsvps[selectedPracticeId]) {
-      const practiceRsvps = rsvps[selectedPracticeId]
+      rsvpData = rsvps[selectedPracticeId]
+    } else if (selectedEventId && rsvps[`event_${selectedEventId}`]) {
+      rsvpData = rsvps[`event_${selectedEventId}`]
+    }
 
+    if (rsvpData) {
       filtered = filtered.map(member => {
-        const rsvp = practiceRsvps.find(r => r.user_id === member.id)
+        const rsvp = rsvpData.find(r => r.user_id === member.id)
         return {
           ...member,
           rsvpStatus: rsvp?.status || 'no_response'
         }
       })
 
-      // Apply RSVP filter
       if (rsvpFilter !== 'all') {
         filtered = filtered.filter(m => m.rsvpStatus === rsvpFilter)
       }
 
-      // Sort by RSVP status (yes first, then maybe, then no_response, then no)
       const statusOrder = { yes: 1, maybe: 2, no_response: 3, no: 4 }
       filtered.sort((a, b) => {
         const orderA = statusOrder[a.rsvpStatus] || 999
@@ -100,207 +168,167 @@ export default function Lineups() {
         return orderA - orderB
       })
     } else {
-      // No practice selected, just add a default rsvpStatus
       filtered = filtered.map(member => ({
         ...member,
         rsvpStatus: null
       }))
     }
 
-    setAvailableMembers(filtered)
-  }, [members, selectedPracticeId, rsvps, rsvpFilter])
+    // Filter out members already in the boat
+    const positionedMemberIds = new Set()
+    const addIds = (m) => { if (m?.id) positionedMemberIds.add(m.id) }
+    
+    addIds(boatPositions.drummer)
+    addIds(boatPositions.steersperson)
+    boatPositions.left.forEach(addIds)
+    boatPositions.right.forEach(addIds)
+    boatPositions.alternates.forEach(addIds)
+    
+    // Add secondary/comparison members too
+    addIds(boatPositions.drummer_secondary)
+    addIds(boatPositions.steersperson_secondary)
+    boatPositions.left_secondary?.forEach(addIds)
+    boatPositions.right_secondary?.forEach(addIds)
+
+    setAvailableMembers(filtered.filter(m => !positionedMemberIds.has(m.id)))
+  }, [members, selectedPracticeId, selectedEventId, rsvps, rsvpFilter, boatPositions]) 
+
+  // Handle drag start - add body class to prevent scroll
+  const handleDragStart = () => {
+    document.body.classList.add('is-dragging')
+  }
 
   const handleDragEnd = (result) => {
-    const { source, destination } = result
-
+    document.body.classList.remove('is-dragging')
+    const { source, destination, draggableId } = result
     if (!destination) return
 
     let draggedMember = null
-
     const parseIndex = (id) => parseInt(id.split('-')[1])
 
-    // Determine dragged member based on source droppable and index (0 = primary, 1 = secondary)
+    // Find the dragged member object from source
     if (source.droppableId === 'available') {
       draggedMember = availableMembers[source.index]
-    } else if (source.droppableId === 'drummer') {
-      draggedMember = source.index === 0 ? boatPositions.drummer : boatPositions.drummer_secondary
-    } else if (source.droppableId === 'steersperson') {
-      draggedMember = source.index === 0 ? boatPositions.steersperson : boatPositions.steersperson_secondary
-    } else if (source.droppableId.startsWith('left-')) {
-      const index = parseIndex(source.droppableId)
-      draggedMember = source.index === 0 ? boatPositions.left[index] : boatPositions.left_secondary[index]
-    } else if (source.droppableId.startsWith('right-')) {
-      const index = parseIndex(source.droppableId)
-      draggedMember = source.index === 0 ? boatPositions.right[index] : boatPositions.right_secondary[index]
-    } else if (source.droppableId.startsWith('alternate-')) {
-      const index = parseIndex(source.droppableId)
-      draggedMember = boatPositions.alternates[index]
+    } else {
+        const match = (m) => m?.id === draggableId ? m : null
+
+        if (source.droppableId === 'drummer') {
+            draggedMember = match(boatPositions.drummer) || match(boatPositions.drummer_secondary)
+        } else if (source.droppableId === 'steersperson') {
+            draggedMember = match(boatPositions.steersperson) || match(boatPositions.steersperson_secondary)
+        } else if (source.droppableId.startsWith('left-')) {
+            const idx = parseIndex(source.droppableId)
+            draggedMember = match(boatPositions.left[idx]) || match(boatPositions.left_secondary[idx])
+        } else if (source.droppableId.startsWith('right-')) {
+            const idx = parseIndex(source.droppableId)
+            draggedMember = match(boatPositions.right[idx]) || match(boatPositions.right_secondary[idx])
+        } else if (source.droppableId.startsWith('alternate-')) {
+            const idx = parseIndex(source.droppableId)
+            draggedMember = match(boatPositions.alternates[idx])
+        }
     }
 
     if (!draggedMember) return
 
     let newBoatPositions = { ...boatPositions }
-    let newAvailableMembers = [...availableMembers]
-    let displacedMember = null
 
-    // Remove from source slot
-    if (source.droppableId === 'available') {
-      newAvailableMembers.splice(source.index, 1)
-    } else if (source.droppableId === 'drummer') {
-      if (source.index === 0) newBoatPositions.drummer = null
-      else newBoatPositions.drummer_secondary = null
-    } else if (source.droppableId === 'steersperson') {
-      if (source.index === 0) newBoatPositions.steersperson = null
-      else newBoatPositions.steersperson_secondary = null
-    } else if (source.droppableId.startsWith('left-')) {
-      const index = parseIndex(source.droppableId)
-      if (source.index === 0) {
-        newBoatPositions.left = [...boatPositions.left]
-        newBoatPositions.left[index] = null
-      } else {
-        newBoatPositions.left_secondary = [...boatPositions.left_secondary]
-        newBoatPositions.left_secondary[index] = null
-      }
-    } else if (source.droppableId.startsWith('right-')) {
-      const index = parseIndex(source.droppableId)
-      if (source.index === 0) {
-        newBoatPositions.right = [...boatPositions.right]
-        newBoatPositions.right[index] = null
-      } else {
-        newBoatPositions.right_secondary = [...boatPositions.right_secondary]
-        newBoatPositions.right_secondary[index] = null
-      }
-    } else if (source.droppableId.startsWith('alternate-')) {
-      const index = parseIndex(source.droppableId)
-      newBoatPositions.alternates = [...boatPositions.alternates]
-      newBoatPositions.alternates[index] = null
+    // Helper to remove from source using ID check
+    const removeFromSource = () => {
+        const removeIfMatch = (m) => m?.id === draggableId ? null : m
+
+        if (source.droppableId === 'available') {
+            // Handled by state update
+        } else if (source.droppableId === 'drummer') {
+            newBoatPositions.drummer = removeIfMatch(newBoatPositions.drummer)
+            newBoatPositions.drummer_secondary = removeIfMatch(newBoatPositions.drummer_secondary)
+        } else if (source.droppableId === 'steersperson') {
+            newBoatPositions.steersperson = removeIfMatch(newBoatPositions.steersperson)
+            newBoatPositions.steersperson_secondary = removeIfMatch(newBoatPositions.steersperson_secondary)
+        } else if (source.droppableId.startsWith('left-')) {
+            const idx = parseIndex(source.droppableId)
+            newBoatPositions.left = [...newBoatPositions.left]
+            newBoatPositions.left_secondary = [...newBoatPositions.left_secondary]
+            
+            newBoatPositions.left[idx] = removeIfMatch(newBoatPositions.left[idx])
+            newBoatPositions.left_secondary[idx] = removeIfMatch(newBoatPositions.left_secondary[idx])
+        } else if (source.droppableId.startsWith('right-')) {
+            const idx = parseIndex(source.droppableId)
+            newBoatPositions.right = [...newBoatPositions.right]
+            newBoatPositions.right_secondary = [...newBoatPositions.right_secondary]
+
+            newBoatPositions.right[idx] = removeIfMatch(newBoatPositions.right[idx])
+            newBoatPositions.right_secondary[idx] = removeIfMatch(newBoatPositions.right_secondary[idx])
+        } else if (source.droppableId.startsWith('alternate-')) {
+            const idx = parseIndex(source.droppableId)
+            newBoatPositions.alternates = [...newBoatPositions.alternates]
+            newBoatPositions.alternates[idx] = removeIfMatch(newBoatPositions.alternates[idx])
+        }
     }
 
-    // Add to destination - if primary filled, use secondary; if both filled, replace secondary
-    const placeInSeat = (primaryArr, secondaryArr, idx) => {
-      if (!newBoatPositions[primaryArr] || newBoatPositions[primaryArr] === boatPositions[primaryArr]) {
-        newBoatPositions[primaryArr] = [...boatPositions[primaryArr]]
-      }
-      if (!newBoatPositions[secondaryArr] || newBoatPositions[secondaryArr] === boatPositions[secondaryArr]) {
-        newBoatPositions[secondaryArr] = [...boatPositions[secondaryArr]]
-      }
+    // Helper to add to destination
+    const addToDest = () => {
+        if (destination.droppableId === 'available') return 
 
-      if (!newBoatPositions[primaryArr][idx]) {
-        newBoatPositions[primaryArr][idx] = draggedMember
-      } else if (!newBoatPositions[secondaryArr][idx]) {
-        newBoatPositions[secondaryArr][idx] = draggedMember
-      } else {
-        displacedMember = newBoatPositions[secondaryArr][idx]
-        newBoatPositions[secondaryArr][idx] = draggedMember
-      }
+        const placeIn = (primaryField, secondaryField, idx = null) => {
+            const get = (field, i) => i !== null ? newBoatPositions[field][i] : newBoatPositions[field]
+            const set = (field, i, val) => {
+                if (i !== null) {
+                    if (!newBoatPositions[field]) newBoatPositions[field] = [...boatPositions[field]] 
+                    const arr = [...newBoatPositions[field]]
+                    arr[i] = val
+                    newBoatPositions[field] = arr
+                } else {
+                    newBoatPositions[field] = val
+                }
+            }
+
+            if (!get(primaryField, idx)) {
+                set(primaryField, idx, draggedMember)
+            } else if (secondaryField && !get(secondaryField, idx)) {
+                set(secondaryField, idx, draggedMember)
+            } else if (secondaryField) {
+                set(secondaryField, idx, draggedMember)
+            } else {
+                set(primaryField, idx, draggedMember)
+            }
+        }
+
+        if (destination.droppableId === 'drummer') placeIn('drummer', 'drummer_secondary')
+        else if (destination.droppableId === 'steersperson') placeIn('steersperson', 'steersperson_secondary')
+        else if (destination.droppableId.startsWith('left-')) placeIn('left', 'left_secondary', parseIndex(destination.droppableId))
+        else if (destination.droppableId.startsWith('right-')) placeIn('right', 'right_secondary', parseIndex(destination.droppableId))
+        else if (destination.droppableId.startsWith('alternate-')) placeIn('alternates', null, parseIndex(destination.droppableId))
     }
-
-    if (destination.droppableId === 'available') {
-      newAvailableMembers.splice(destination.index, 0, draggedMember)
-    } else if (destination.droppableId === 'drummer') {
-      if (!newBoatPositions.drummer) {
-        displacedMember = null
-        newBoatPositions.drummer = draggedMember
-      } else if (!newBoatPositions.drummer_secondary) {
-        displacedMember = null
-        newBoatPositions.drummer_secondary = draggedMember
-      } else {
-        displacedMember = newBoatPositions.drummer_secondary
-        newBoatPositions.drummer_secondary = draggedMember
-      }
-    } else if (destination.droppableId === 'steersperson') {
-      if (!newBoatPositions.steersperson) {
-        displacedMember = null
-        newBoatPositions.steersperson = draggedMember
-      } else if (!newBoatPositions.steersperson_secondary) {
-        displacedMember = null
-        newBoatPositions.steersperson_secondary = draggedMember
-      } else {
-        displacedMember = newBoatPositions.steersperson_secondary
-        newBoatPositions.steersperson_secondary = draggedMember
-      }
-    } else if (destination.droppableId.startsWith('left-')) {
-      const index = parseIndex(destination.droppableId)
-      placeInSeat('left', 'left_secondary', index)
-    } else if (destination.droppableId.startsWith('right-')) {
-      const index = parseIndex(destination.droppableId)
-      placeInSeat('right', 'right_secondary', index)
-    } else if (destination.droppableId.startsWith('alternate-')) {
-      const index = parseIndex(destination.droppableId)
-      if (!newBoatPositions.alternates || newBoatPositions.alternates === boatPositions.alternates) {
-        newBoatPositions.alternates = [...boatPositions.alternates]
-      }
-      displacedMember = newBoatPositions.alternates[index]
-      newBoatPositions.alternates[index] = draggedMember
-    }
-
-    if (displacedMember) {
-      newAvailableMembers.push(displacedMember)
-    }
-
+    
+    removeFromSource()
+    addToDest()
+    
     setBoatPositions(newBoatPositions)
-    setAvailableMembers(newAvailableMembers)
   }
 
   const handleBoatSizeChange = (newSize) => {
-    const currentLeft = [...boatPositions.left]
-    const currentRight = [...boatPositions.right]
-    const currentLeftSecondary = [...(boatPositions.left_secondary || Array(boatRows).fill(null))]
-    const currentRightSecondary = [...(boatPositions.right_secondary || Array(boatRows).fill(null))]
-
-    // If shrinking the boat, move displaced members back to available
-    if (newSize < boatRows) {
-      const displacedMembers = [
-        ...currentLeft.slice(newSize).filter(m => m !== null),
-        ...currentRight.slice(newSize).filter(m => m !== null),
-        ...currentLeftSecondary.slice(newSize).filter(m => m !== null),
-        ...currentRightSecondary.slice(newSize).filter(m => m !== null)
-      ]
-      if (displacedMembers.length > 0) {
-        setAvailableMembers([...availableMembers, ...displacedMembers])
-      }
+    const resizeArr = (arr) => {
+        if (!arr) return Array(newSize).fill(null)
+        if (newSize > arr.length) return [...arr, ...Array(newSize - arr.length).fill(null)]
+        return arr.slice(0, newSize)
     }
-
-    // Resize arrays (trim or extend with nulls)
-    const newLeft = newSize > currentLeft.length
-      ? [...currentLeft, ...Array(newSize - currentLeft.length).fill(null)]
-      : currentLeft.slice(0, newSize)
-
-    const newRight = newSize > currentRight.length
-      ? [...currentRight, ...Array(newSize - currentRight.length).fill(null)]
-      : currentRight.slice(0, newSize)
-
-    const newLeftSecondary = newSize > currentLeftSecondary.length
-      ? [...currentLeftSecondary, ...Array(newSize - currentLeftSecondary.length).fill(null)]
-      : currentLeftSecondary.slice(0, newSize)
-
-    const newRightSecondary = newSize > currentRightSecondary.length
-      ? [...currentRightSecondary, ...Array(newSize - currentRightSecondary.length).fill(null)]
-      : currentRightSecondary.slice(0, newSize)
-
+    
     setBoatRows(newSize)
-    setBoatPositions({
-      ...boatPositions,
-      left: newLeft,
-      right: newRight,
-      left_secondary: newLeftSecondary,
-      right_secondary: newRightSecondary
-    })
-
-    toast.success(`Boat size changed to ${newSize} rows (${newSize * 2} paddlers)`)
+    setBoatPositions(prev => ({
+        ...prev,
+        left: resizeArr(prev.left),
+        right: resizeArr(prev.right),
+        left_secondary: resizeArr(prev.left_secondary),
+        right_secondary: resizeArr(prev.right_secondary),
+    }))
   }
 
   const handleSaveLineup = async () => {
-    console.log('handleSaveLineup called')
-    console.log('lineupName:', lineupName)
-    console.log('editingLineupId:', editingLineupId)
-
     if (!lineupName.trim()) {
-      toast.error('Please enter a lineup name')
-      return
+        toast.error('Please enter a lineup name')
+        return
     }
-
-    // Build positions object with full member details for reference
+    
     const positions = {
       drummer: boatPositions.drummer?.id || null,
       steersperson: boatPositions.steersperson?.id || null,
@@ -309,292 +337,88 @@ export default function Lineups() {
         right: boatPositions.right.map(m => m?.id || null)
       },
       alternates: boatPositions.alternates.map(m => m?.id || null),
-      // Store member details for quick reference
-      members: {
-        drummer: boatPositions.drummer ? {
-          id: boatPositions.drummer.id,
-          name: boatPositions.drummer.full_name,
-          weight: boatPositions.drummer.weight_kg
-        } : null,
-        steersperson: boatPositions.steersperson ? {
-          id: boatPositions.steersperson.id,
-          name: boatPositions.steersperson.full_name,
-          weight: boatPositions.steersperson.weight_kg
-        } : null,
-        left: boatPositions.left.map(m => m ? {
-          id: m.id,
-          name: m.full_name,
-          weight: m.weight_kg
-        } : null),
-        right: boatPositions.right.map(m => m ? {
-          id: m.id,
-          name: m.full_name,
-          weight: m.weight_kg
-        } : null),
-        alternates: boatPositions.alternates.map(m => m ? {
-          id: m.id,
-          name: m.full_name,
-          weight: m.weight_kg
-        } : null)
-      },
-      // Store balance metrics
-      balance: {
-        totalWeight: balance.totalWeight,
-        leftTotal: balance.leftTotal,
-        rightTotal: balance.rightTotal,
-        frontTotal: balance.frontTotal,
-        backTotal: balance.backTotal,
-        sideBalance: balance.sideBalance,
-        frontBackBalance: balance.frontBackBalance
+      // Include secondary for saving if backend supports it (assuming simple schema for now)
+      // If schema supports custom JSON, we can save it all
+      drummer_secondary: boatPositions.drummer_secondary?.id || null,
+      steersperson_secondary: boatPositions.steersperson_secondary?.id || null,
+      paddlers_secondary: {
+          left: boatPositions.left_secondary.map(m => m?.id || null),
+          right: boatPositions.right_secondary.map(m => m?.id || null)
       }
     }
-
-    const lineupData = {
-      name: lineupName,
-      notes: lineupNotes || null,
-      positions: positions,
-      created_by: user.id
-    }
-
+    
+    const lineupData = { name: lineupName, notes: lineupNotes || null, positions, created_by: user.id }
+    
     let result
-    if (editingLineupId) {
-      // Update existing lineup
-      console.log('Updating lineup with data:', lineupData)
-      result = await updateLineup(editingLineupId, lineupData)
-      console.log('Update result:', result)
+    if (editingLineupId && !isSaveAs) {
+        result = await updateLineup(editingLineupId, lineupData)
     } else {
-      // Create new lineup
-      console.log('Creating lineup with data:', lineupData)
-      result = await createLineup(lineupData)
-      console.log('Create result:', result)
+        result = await createLineup(lineupData)
     }
 
     if (result.success) {
-      setLineupName('')
-      setLineupNotes('')
-      setEditingLineupId(null)
-      setIsCreating(false)
-      // Clear temp edit ID if this was a "Save as New"
-      if (window.__tempEditId) {
-        window.__tempEditId = null
-      }
-      toast.success(`Lineup "${lineupName}" ${editingLineupId ? 'updated' : 'saved'} successfully!`)
+        toast.success(editingLineupId && !isSaveAs ? 'Lineup updated!' : 'Lineup saved!')
+        setEditingLineupId(result.data?.id || null)
+        setIsCreating(false)
+        setIsSaveAs(false)
+        if (window.__tempEditId) window.__tempEditId = null
     } else {
-      console.error(`Failed to ${editingLineupId ? 'update' : 'save'} lineup:`, result.error)
-      toast.error(`Failed to ${editingLineupId ? 'update' : 'save'} lineup: ` + (result.error?.message || 'Unknown error'))
+        toast.error('Failed to save lineup')
     }
   }
 
   const handleResetPositions = () => {
-    // Only clear positions, keep editing state and name/notes
-    setBoatPositions({
-      drummer: null,
-      drummer_secondary: null,
-      left: Array(boatRows).fill(null),
-      left_secondary: Array(boatRows).fill(null),
-      right: Array(boatRows).fill(null),
-      right_secondary: Array(boatRows).fill(null),
-      steersperson: null,
-      steersperson_secondary: null,
-      alternates: [null, null, null, null]
-    })
-    setAvailableMembers(members.filter(m => m.is_active))
-    toast.success('All positions cleared')
+    setBoatPositions(prev => ({
+        ...prev,
+        drummer: null, drummer_secondary: null, steersperson: null, steersperson_secondary: null,
+        left: Array(boatRows).fill(null), left_secondary: Array(boatRows).fill(null),
+        right: Array(boatRows).fill(null), right_secondary: Array(boatRows).fill(null),
+        alternates: [null, null, null, null]
+    }))
+    toast.success('Positions cleared')
   }
 
   const handleClearLineup = () => {
-    // Full reset - clear everything including editing state
-    setBoatPositions({
-      drummer: null,
-      drummer_secondary: null,
-      left: Array(boatRows).fill(null),
-      left_secondary: Array(boatRows).fill(null),
-      right: Array(boatRows).fill(null),
-      right_secondary: Array(boatRows).fill(null),
-      steersperson: null,
-      steersperson_secondary: null,
-      alternates: [null, null, null, null]
-    })
-    setAvailableMembers(members.filter(m => m.is_active))
-    setEditingLineupId(null)
+    handleResetPositions()
     setLineupName('')
     setLineupNotes('')
-    toast.success('Lineup cleared')
+    setEditingLineupId(null)
   }
 
   const handleLoadLineup = (lineup) => {
-    const positions = lineup.positions
-
-    // Find member objects by ID from the current members array
-    const findMember = (id) => members.find(m => m.id === id)
-
-    // Get alternates array with backward compatibility
-    const alternatesIds = positions.alternates || [null, null, null, null]
-
-    // Reconstruct boat positions with actual member objects
-    const newBoatPositions = {
-      drummer: positions.drummer ? findMember(positions.drummer) : null,
-      steersperson: positions.steersperson ? findMember(positions.steersperson) : null,
-      left: positions.paddlers.left.map(id => id ? findMember(id) : null),
-      right: positions.paddlers.right.map(id => id ? findMember(id) : null),
-      alternates: alternatesIds.map(id => id ? findMember(id) : null)
+    const findMember = (id) => (members || []).find(m => m.id === id)
+    const p = lineup.positions
+    
+    const mapMembers = (ids) => (ids || []).map(id => findMember(id) || null)
+    const fill = (arr, len) => {
+        const res = arr ? [...arr] : []
+        while (res.length < len) res.push(null)
+        return res.slice(0, len)
     }
 
-    // Update boat rows if lineup has different size
-    const lineupRows = positions.paddlers.left.length
-    if (lineupRows !== boatRows) {
-      setBoatRows(lineupRows)
-    }
+    const loadedRows = p.paddlers?.left?.length || 10
+    if (loadedRows !== boatRows) setBoatRows(loadedRows)
 
-    // Update boat positions
-    setBoatPositions(newBoatPositions)
-
-    // Set editing mode and lineup metadata
-    setEditingLineupId(lineup.id)
+    setBoatPositions({
+        drummer: findMember(p.drummer),
+        drummer_secondary: findMember(p.drummer_secondary),
+        steersperson: findMember(p.steersperson),
+        steersperson_secondary: findMember(p.steersperson_secondary),
+        left: fill(mapMembers(p.paddlers?.left), loadedRows),
+        right: fill(mapMembers(p.paddlers?.right), loadedRows),
+        left_secondary: fill(mapMembers(p.paddlers_secondary?.left), loadedRows),
+        right_secondary: fill(mapMembers(p.paddlers_secondary?.right), loadedRows),
+        alternates: fill(mapMembers(p.alternates), 4)
+    })
     setLineupName(lineup.name)
-    setLineupNotes(lineup.notes || '')
-
-    // Remove loaded members from available pool
-    const loadedMemberIds = new Set([
-      positions.drummer,
-      positions.steersperson,
-      ...positions.paddlers.left,
-      ...positions.paddlers.right,
-      ...alternatesIds
-    ].filter(id => id !== null))
-
-    setAvailableMembers(members.filter(m => m.is_active && !loadedMemberIds.has(m.id)))
-
-    toast.success(`Loaded lineup: ${lineup.name} (Editing mode)`)
-
-    // Scroll to top to see the loaded lineup
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+    setLineupNotes(lineup.notes)
+    setEditingLineupId(lineup.id)
   }
 
-  // Calculate weight distribution and balance
-  const calculateBalance = () => {
-    const positions = boatPositions
-
-    // Calculate primary weights
-    const drummerWeight = positions.drummer?.weight_kg || 0
-    const steerspersonWeight = positions.steersperson?.weight_kg || 0
-
-    const leftWeights = positions.left.map(m => m?.weight_kg || 0)
-    const rightWeights = positions.right.map(m => m?.weight_kg || 0)
-
-    const leftTotal = leftWeights.reduce((sum, w) => sum + w, 0)
-    const rightTotal = rightWeights.reduce((sum, w) => sum + w, 0)
-    const totalWeight = drummerWeight + steerspersonWeight + leftTotal + rightTotal
-
-    // Calculate secondary weights (for comparison)
-    const drummerWeightSecondary = positions.drummer_secondary?.weight_kg || 0
-    const steerspersonWeightSecondary = positions.steersperson_secondary?.weight_kg || 0
-
-    const leftWeightsSecondary = (positions.left_secondary || []).map(m => m?.weight_kg || 0)
-    const rightWeightsSecondary = (positions.right_secondary || []).map(m => m?.weight_kg || 0)
-
-    const leftTotalSecondary = leftWeightsSecondary.reduce((sum, w) => sum + w, 0)
-    const rightTotalSecondary = rightWeightsSecondary.reduce((sum, w) => sum + w, 0)
-    const totalWeightSecondary = drummerWeightSecondary + steerspersonWeightSecondary + leftTotalSecondary + rightTotalSecondary
-
-    // Calculate front/back balance (positions 1-5 vs 6-10)
-    const frontLeft = leftWeights.slice(0, 5).reduce((sum, w) => sum + w, 0)
-    const frontRight = rightWeights.slice(0, 5).reduce((sum, w) => sum + w, 0)
-    const backLeft = leftWeights.slice(5).reduce((sum, w) => sum + w, 0)
-    const backRight = rightWeights.slice(5).reduce((sum, w) => sum + w, 0)
-
-    const frontTotal = drummerWeight + frontLeft + frontRight
-    const backTotal = steerspersonWeight + backLeft + backRight
-
-    // Calculate side-to-side balance
-    const leftSideTotal = leftTotal
-    const rightSideTotal = rightTotal
-    const sideDiff = Math.abs(leftSideTotal - rightSideTotal)
-    const sideBalance = totalWeight > 0 ? (sideDiff / totalWeight) * 100 : 0
-
-    // Calculate front-back balance
-    const frontBackDiff = Math.abs(frontTotal - backTotal)
-    const frontBackBalance = totalWeight > 0 ? (frontBackDiff / totalWeight) * 100 : 0
-
-    // Calculate comparison differences
-    const hasSecondary = totalWeightSecondary > 0
-    const totalWeightDiff = totalWeightSecondary - totalWeight
-    const leftTotalDiff = leftTotalSecondary - leftTotal
-    const rightTotalDiff = rightTotalSecondary - rightTotal
-
-    return {
-      totalWeight,
-      leftTotal,
-      rightTotal,
-      frontTotal,
-      backTotal,
-      sideDiff,
-      sideBalance,
-      frontBackDiff,
-      frontBackBalance,
-      drummerWeight,
-      steerspersonWeight,
-      // Secondary comparison data
-      hasSecondary,
-      totalWeightSecondary,
-      totalWeightDiff,
-      leftTotalSecondary,
-      leftTotalDiff,
-      rightTotalSecondary,
-      rightTotalDiff
-    }
-  }
-
-  const balance = calculateBalance()
-
-  const frontRatio = balance.totalWeight > 0 ? balance.frontTotal / balance.totalWeight : 0.5
-  const altFrontRatio = balance.totalWeightSecondary > 0
-    ? balance.frontTotalSecondary / balance.totalWeightSecondary
-    : frontRatio
-
+  const weightFactor = unitSystem === 'imperial' ? 2.20462 : 1
   const unitLabel = unitSystem === 'imperial' ? 'lb' : 'kg'
-  const weightFactor = unitSystem === 'imperial' ? 2.20462262 : 1
-  const formatWeight = (kgValue, digits = 1) => `${(kgValue * weightFactor).toFixed(digits)} ${unitLabel}`
+  const formatWt = (kg) => kg ? `${(kg * weightFactor).toFixed(0)} ${unitLabel}` : '-'
 
-  // Seat-by-seat weight heatmap (left row + right row)
-  const drummerHeatWeight = boatPositions.drummer?.weight_kg || 0
-  const steersHeatWeight = boatPositions.steersperson?.weight_kg || 0
-
-  const leftWeights = boatPositions.left.map(m => m?.weight_kg || 0)
-  const rightWeights = boatPositions.right.map(m => m?.weight_kg || 0)
-  const altLeftWeights = boatPositions.left.map((m, idx) =>
-    (m?.weight_kg || 0) + (boatPositions.left_secondary?.[idx]?.weight_kg || 0)
-  )
-  const altRightWeights = boatPositions.right.map((m, idx) =>
-    (m?.weight_kg || 0) + (boatPositions.right_secondary?.[idx]?.weight_kg || 0)
-  )
-  const altDrummerHeatWeight = drummerHeatWeight + (boatPositions.drummer_secondary?.weight_kg || 0)
-  const altSteersHeatWeight = steersHeatWeight + (boatPositions.steersperson_secondary?.weight_kg || 0)
-  const maxSeat = Math.max(
-    1,
-    drummerHeatWeight,
-    steersHeatWeight,
-    altDrummerHeatWeight,
-    altSteersHeatWeight,
-    ...leftWeights,
-    ...rightWeights,
-    ...(altLeftWeights || []),
-    ...(altRightWeights || [])
-  )
-
-  const pillStyle = (weight, isAlt = false) => ({
-    writingMode: 'vertical-rl',
-    backgroundColor: `rgba(${isAlt ? '251, 113, 133' : '244, 63, 94'}, ${Math.max(0.15, Math.min(1, weight / maxSeat))})`
-  })
-
-  const getBalanceStatus = (balancePercent) => {
-    if (balancePercent < 3) return { label: 'Excellent', color: 'text-green-600', bg: 'bg-green-100' }
-    if (balancePercent < 5) return { label: 'Good', color: 'text-blue-600', bg: 'bg-blue-100' }
-    if (balancePercent < 8) return { label: 'Fair', color: 'text-yellow-600', bg: 'bg-yellow-100' }
-    return { label: 'Unbalanced', color: 'text-red-600', bg: 'bg-red-100' }
-  }
-
-  // Map roster data into shape needed for COG panel
   const getWeightKg = (athlete) => {
     if (!athlete) return 0
     if (typeof athlete.weight_kg === 'number') return athlete.weight_kg
@@ -604,11 +428,36 @@ export default function Lineups() {
     return 0
   }
 
+  // Count genders for current lineup state
+  const countGenders = (positions, isSecondary = false) => {
+    let m = 0, f = 0
+    const check = (mem) => {
+        if (!mem) return
+        const g = mem.gender?.toLowerCase()
+        if (g === 'male') m++
+        else if (g === 'female') f++
+    }
+    
+    if (isSecondary) {
+        check(positions.drummer_secondary)
+        check(positions.steersperson_secondary)
+        positions.left_secondary?.forEach(check)
+        positions.right_secondary?.forEach(check)
+    } else {
+        check(positions.drummer)
+        check(positions.steersperson)
+        positions.left.forEach(check)
+        positions.right.forEach(check)
+    }
+    return { m, f }
+  }
+
+  const primaryGenderCount = useMemo(() => countGenders(boatPositions, false), [boatPositions])
+  const secondaryGenderCount = useMemo(() => countGenders(boatPositions, true), [boatPositions])
+
   const cogLayout = useMemo(() => {
-    // bow is negative, stern positive
     const spacing = 1
     const seats = []
-    // drummer at bow-most position
     seats.push({ id: 'drummer', name: 'Drummer', x: -(boatRows + 1) * spacing })
     for (let i = 0; i < boatRows; i++) {
       const x = -(boatRows - i) * spacing
@@ -651,421 +500,573 @@ export default function Lineups() {
     }
   }, [boatPositions, boatRows, currentLineup, lineupName, cogLayout.id])
 
-  const getRsvpBadge = (status) => {
-    switch (status) {
-      case 'yes':
-        return { icon: '✓', label: 'Yes', color: 'bg-green-500 text-white' }
-      case 'maybe':
-        return { icon: '?', label: 'Maybe', color: 'bg-yellow-500 text-white' }
-      case 'no':
-        return { icon: '✗', label: 'No', color: 'bg-red-500 text-white' }
-      case 'no_response':
-        return { icon: '·', label: 'No Response', color: 'bg-gray-400 text-white' }
-      default:
-        return null
+  const cogLineupSecondary = useMemo(() => {
+    const assignments = []
+    const addAssignment = (seatId, member) => {
+      if (member?.id) assignments.push({ seatId, athleteId: member.id })
     }
-  }
+    
+    addAssignment('drummer', boatPositions.drummer_secondary)
+    for (let i = 0; i < boatRows; i++) {
+      addAssignment(`L${i + 1}`, boatPositions.left_secondary?.[i])
+      addAssignment(`R${i + 1}`, boatPositions.right_secondary?.[i])
+    }
+    addAssignment('steer', boatPositions.steersperson_secondary)
 
-  const MemberCard = ({ member, index, isDragging, isSecondary = false }) => {
-    const rsvpBadge = member.rsvpStatus ? getRsvpBadge(member.rsvpStatus) : null
+    return {
+      id: 'secondary',
+      boatLayoutId: cogLayout.id,
+      name: 'Secondary Lineup',
+      assignments
+    }
+  }, [boatPositions, boatRows, cogLayout.id])
+
+  const seatLeverageMap = useMemo(() => {
+    try {
+      if (!cogLayout || !cogAthletes || !cogLineup) return new Map();
+      const seatMoments = computeSeatMomentsForLineup(cogLayout, cogAthletes, cogLineup)
+      const map = new Map()
+      for (const sm of seatMoments) {
+        map.set(sm.seatId, sm.momentNormalized)
+      }
+      return map
+    } catch (e) {
+      console.error('Failed to compute seat moments', e)
+      return new Map()
+    }
+  }, [cogLayout, cogAthletes, cogLineup])
+
+  const seatLeverageMapSecondary = useMemo(() => {
+    try {
+      if (!cogLayout || !cogAthletes || !cogLineupSecondary) return new Map();
+      const seatMoments = computeSeatMomentsForLineup(cogLayout, cogAthletes, cogLineupSecondary)
+      const map = new Map()
+      for (const sm of seatMoments) {
+        map.set(sm.seatId, sm.momentNormalized)
+      }
+      return map
+    } catch (e) {
+        return new Map()
+    }
+  }, [cogLayout, cogAthletes, cogLineupSecondary])
+
+  const hasSecondaryMembers = useMemo(() => {
+    return !!(
+      boatPositions.drummer_secondary ||
+      boatPositions.steersperson_secondary ||
+      boatPositions.left_secondary?.some(m => m !== null) ||
+      boatPositions.right_secondary?.some(m => m !== null)
+    )
+  }, [boatPositions])
+
+  // -- Sub-Components -- //
+
+  const MemberCard = ({ member, index, isSecondary, leverage = 0, noMarginBottom = false }) => {
+    if (!member) return null;
+
+    const intensity = leverage || 0
+    const bgGradient = intensity > 0
+      ? `linear-gradient(135deg, rgba(99,102,241,0.08), rgba(239,68,68,${0.2 + 0.45 * intensity}))`
+      : member.is_guest
+        ? 'linear-gradient(135deg, rgba(251,146,60,0.1), rgba(251,146,60,0.2))'
+        : 'linear-gradient(135deg, rgba(241,245,249,0.9), rgba(255,255,255,0.95))'
 
     return (
-      <Draggable draggableId={member.id} index={index}>
+      <Draggable draggableId={String(member.id)} index={index}>
         {(provided, snapshot) => (
           <div
             ref={provided.innerRef}
             {...provided.draggableProps}
             {...provided.dragHandleProps}
-            className={`p-2 mb-1 ${member.is_guest ? 'bg-orange-50' : 'bg-white'} border rounded-lg shadow-sm cursor-move hover:shadow-md transition-shadow ${
-              snapshot.isDragging ? 'opacity-50' : ''
-            }`}
+            className={`
+              member-card-draggable
+              relative p-1.5 rounded-lg border shadow-sm bg-white/90 backdrop-blur-sm cursor-grab active:cursor-grabbing select-none transition-all
+              ${snapshot.isDragging ? 'z-[9999] scale-105 shadow-xl ring-2 ring-primary-400 rotate-1' : 'hover:border-primary-300 hover:shadow-md'}
+              ${isSecondary ? 'border-l-4 border-l-purple-400' : 'border-l-4 border-l-blue-400'}
+              ${!noMarginBottom ? 'mb-1' : ''}
+              border-slate-200
+            `}
+            style={{
+              backgroundImage: bgGradient,
+              ...provided.draggableProps.style,
+              transformOrigin: 'top left',
+              touchAction: 'none', // Critical for mobile drag-drop
+            }}
           >
-            <div className="flex items-start justify-between">
-              <div className="flex-1">
+            <div className="flex justify-between items-start">
+              <div className="flex-1 min-w-0 mr-1">
                 <div className="flex items-center gap-1 flex-wrap">
-                  <span className="text-sm font-medium text-gray-900">
-                    {member.full_name}
-                  </span>
-                  {isSecondary && (
-                    <span className="px-1 py-0.5 text-[10px] font-semibold bg-orange-100 text-orange-700 rounded">
-                      ALT
+                  <span className="font-bold text-xs text-slate-800 truncate max-w-[110px] leading-tight">{member.full_name}</span>
+                  {member.gender && (
+                    <span className={`w-3.5 h-3.5 rounded-full flex items-center justify-center text-[8px] font-bold text-white ${member.gender.toLowerCase() === 'female' ? 'bg-pink-400' : 'bg-blue-400'}`}>
+                      {member.gender.charAt(0).toUpperCase()}
                     </span>
                   )}
                   {member.is_guest && (
-                    <span className="px-1.5 py-0.5 text-xs font-bold bg-orange-200 text-orange-800 rounded">
-                      GUEST
-                    </span>
+                    <span className="px-1 text-[8px] font-bold bg-amber-100 text-amber-700 rounded border border-amber-200 leading-none">G</span>
                   )}
-                  {member.can_steer && (
-                    <span className="px-1.5 py-0.5 text-xs font-medium bg-blue-100 text-blue-700 rounded" title="Can steer">
-                      🚢 Steer
-                    </span>
-                  )}
-                  {member.can_drum && (
-                    <span className="px-1.5 py-0.5 text-xs font-medium bg-purple-100 text-purple-700 rounded" title="Can drum">
-                      🥁 Drum
-                    </span>
-                  )}
+                  {member.can_steer && <span className="text-[9px]" title="Steer">🚢</span>}
+                  {member.can_drum && <span className="text-[9px]" title="Drum">🥁</span>}
                 </div>
-                <div className="text-xs text-gray-500 flex gap-2 flex-wrap">
-                  {member.weight_kg && <span className="font-semibold">{formatWeight(member.weight_kg)}</span>}
-                  {member.preferred_side && <span>• {member.preferred_side}</span>}
-                  {member.skill_level && <span>• {member.skill_level}</span>}
+                <div className="flex items-center gap-1.5 mt-0.5 text-[9px] text-slate-500 uppercase tracking-wide font-medium flex-wrap leading-tight">
+                  <span>{formatWt(member.weight_kg)}</span>
+                  {member.preferred_side && (
+                    <>
+                      <span className="text-slate-300">•</span>
+                      <span>{member.preferred_side}</span>
+                    </>
+                  )}
+                  {member.skill_level && (
+                    <>
+                      <span className="text-slate-300">•</span>
+                      <span>{member.skill_level.slice(0, 3)}</span>
+                    </>
+                  )}
                 </div>
               </div>
-              {rsvpBadge && (
-                <div className={`ml-2 flex-shrink-0 w-5 h-5 rounded-full ${rsvpBadge.color} flex items-center justify-center text-xs font-bold`} title={rsvpBadge.label}>
-                  {rsvpBadge.icon}
+              {member.rsvpStatus && (
+                <div className={`flex-shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold text-white ${
+                    member.rsvpStatus === 'yes' ? 'bg-green-500' : 
+                    member.rsvpStatus === 'no' ? 'bg-red-500' : 
+                    member.rsvpStatus === 'maybe' ? 'bg-amber-500' : 'bg-slate-300'
+                }`} title={`RSVP: ${member.rsvpStatus === 'no_response' ? 'No Response' : member.rsvpStatus}`}>
+                  {member.rsvpStatus === 'yes' ? '✓' : 
+                   member.rsvpStatus === 'no' ? '✗' : 
+                   member.rsvpStatus === 'maybe' ? '?' : '·'}
                 </div>
               )}
             </div>
+            {intensity > 0 && (
+              <div className="mt-1 flex items-center gap-1">
+                <div className="flex-1 h-0.5 bg-slate-100 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-primary-500 to-rose-500"
+                    style={{ width: `${Math.min(100, Math.max(0, intensity * 100))}%` }}
+                  />
+                </div>
+                <span className="text-[8px] font-mono text-slate-500 min-w-[20px] text-right leading-none">
+                  {(intensity * 100).toFixed(0)}%
+                </span>
+              </div>
+            )}
           </div>
         )}
       </Draggable>
     )
   }
 
-  const BoatPosition = ({ droppableId, member, label, side, secondaryMember = null }) => {
-    const primaryWeight = member?.weight_kg || 0
-    const secondaryWeight = secondaryMember?.weight_kg || 0
-    const weightDiff = secondaryWeight - primaryWeight
-
-    const cards = []
-    if (member) cards.push({ member, isSecondary: false })
-    if (secondaryMember) cards.push({ member: secondaryMember, isSecondary: true })
-
+  const BoatPosition = ({ id, member, label, secondaryMember, leverage = 0, secondaryLeverage = 0 }) => {
     return (
-      <Droppable droppableId={droppableId}>
-        {(provided, snapshot) => (
-          <div
-            ref={provided.innerRef}
-            {...provided.droppableProps}
-            className={`p-2 border-2 border-dashed rounded-lg min-h-[60px] flex flex-col gap-2 ${
-              snapshot.isDraggingOver ? 'bg-primary-50 border-primary-300' : 'bg-gray-50 border-gray-300'
-            }`}
-          >
-            {cards.length === 0 && <span className="text-xs text-gray-400">{label}</span>}
-            {cards.map((card, idx) => (
-              <MemberCard key={`${droppableId}-${card.member.id}-${card.isSecondary ? 'alt' : 'primary'}`} member={card.member} index={idx} isSecondary={card.isSecondary} />
-            ))}
-            {provided.placeholder}
-          </div>
-        )}
+      <Droppable droppableId={id}>
+        {(provided, snapshot) => {
+          const cards = []
+          if (member) cards.push({ data: member, type: 'primary', lev: leverage })
+          if (secondaryMember) cards.push({ data: secondaryMember, type: 'secondary', lev: secondaryLeverage })
+
+          return (
+            <div
+              ref={provided.innerRef}
+              {...provided.droppableProps}
+              className={`
+                relative min-h-[64px] rounded-lg border-2 transition-all duration-200 flex flex-col justify-center py-0.5 px-0.5 gap-0.5
+                ${snapshot.isDraggingOver ? 'border-primary-400 bg-primary-50/70 scale-[1.02] shadow-lg' : 'border-slate-200 bg-slate-50/50'}
+                ${!member && !secondaryMember ? 'border-dashed' : 'border-solid bg-white shadow-sm'}
+              `}
+              style={{ touchAction: 'none' }}
+            >
+              {!member && !secondaryMember && (
+                <div className="text-center">
+                  <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">{label}</span>
+                </div>
+              )}
+              
+              {cards.map((card, idx) => (
+                 <MemberCard 
+                    key={card.data.id} 
+                    member={card.data} 
+                    index={idx} 
+                    isSecondary={card.type === 'secondary'} 
+                    leverage={card.lev} 
+                    noMarginBottom={true}
+                 />
+              ))}
+              
+              {provided.placeholder}
+            </div>
+          )
+        }}
       </Droppable>
     )
   }
 
-  if (!hasRole('admin')) {
+  if (!hasRole('admin') && !hasRole('coach')) {
     return (
-      <div className="card">
-        <p className="text-gray-600">
-          Only admins and coaches can create lineups. Check the Lineups page to view existing lineups.
-        </p>
+      <div className="p-8 text-center">
+        <p className="text-slate-500">Access Restricted</p>
+        <p className="text-sm text-slate-400 mt-2">Only coaches and admins can access the lineup builder.</p>
       </div>
     )
   }
 
+  const getMemberDetailsForPreview = (id) => {
+     const m = (members || []).find(member => member.id === id)
+     if (!m) return { weight: 0, name: 'Unknown', initial: '?', gender: 'unknown' }
+     return {
+       weight: getWeightKg(m),
+       name: m.full_name || 'Unknown',
+       initial: (m.full_name || '?').charAt(0).toUpperCase(),
+       gender: m.gender ? m.gender.toLowerCase() : 'unknown'
+     }
+  }
+
+  const computeSavedLineupStats = (lineup) => {
+     const p = lineup.positions
+     if (!p || !p.paddlers || !p.paddlers.left) return null
+
+     const rows = p.paddlers.left.length
+     // Reconstruct layout
+     const spacing = 1
+     const seats = []
+     seats.push({ id: 'drummer', name: 'Drummer', x: -(rows + 1) * spacing })
+     for (let i = 0; i < rows; i++) {
+       const x = -(rows - i) * spacing
+       seats.push({ id: `L${i + 1}`, name: `L${i + 1}`, x, side: 'port' })
+       seats.push({ id: `R${i + 1}`, name: `R${i + 1}`, x, side: 'starboard' })
+     }
+     seats.push({ id: 'steer', name: 'Steer', x: spacing * 1.5 })
+     const layout = { id: 'saved', seats }
+
+     // Reconstruct athletes & assignment
+     const assignment = []
+     const athletes = [] // minimal subset
+     let m = 0, f = 0 // Gender count
+     
+     const add = (sid, uid) => {
+        if (uid) {
+           assignment.push({ seatId: sid, athleteId: uid })
+           const mem = (members || []).find(m => m.id === uid)
+           if (mem) {
+               athletes.push({ id: uid, name: mem.full_name, weightKg: getWeightKg(mem) })
+               if (mem.gender?.toLowerCase() === 'male') m++
+               else if (mem.gender?.toLowerCase() === 'female') f++
+           }
+        }
+     }
+     add('drummer', p.drummer)
+     add('steer', p.steersperson)
+     p.paddlers.left.forEach((id, i) => add(`L${i+1}`, id))
+     p.paddlers.right.forEach((id, i) => add(`R${i+1}`, id))
+
+     const lineupObj = { id: lineup.id, boatLayoutId: 'saved', assignments: assignment }
+     
+     try {
+        const cog = computeCenterOfGravity(layout, athletes, lineupObj)
+        const bal = computeLeftRightDistribution(layout, athletes, lineupObj)
+        const delta = Math.abs(bal.portWeight - bal.starboardWeight)
+        return { cog, bal, delta, genders: { m, f } }
+     } catch (e) {
+        return null
+     }
+  }
+
+  const GenderCount = ({ count }) => (
+      <div className="flex items-center gap-2 text-xs font-medium text-slate-600 bg-slate-50 px-2 py-1 rounded-lg border border-slate-100">
+          <div className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-blue-400"></span>
+              <span>{count.m}</span>
+          </div>
+          <span className="text-slate-300">|</span>
+          <div className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-pink-400"></span>
+              <span>{count.f}</span>
+          </div>
+      </div>
+  )
+
+  const LineupVisualPreview = ({ isSecondary }) => {
+     const drummer = isSecondary ? boatPositions.drummer_secondary : boatPositions.drummer
+     const steer = isSecondary ? boatPositions.steersperson_secondary : boatPositions.steersperson
+     const leftArr = isSecondary ? boatPositions.left_secondary : boatPositions.left
+     const rightArr = isSecondary ? boatPositions.right_secondary : boatPositions.right
+     
+     const renderDot = (member, role) => {
+        const w = getWeightKg(member)
+        const max = 100
+        const alpha = w > 0 ? Math.min(1, Math.max(0.2, w / max)) : 0.1
+        const initial = member?.full_name?.charAt(0).toUpperCase() || ''
+        // Use primary-secondary colors unless we want gender colors in preview? 
+        // User asked for "quick reference count of M:F", usually implies seeing it.
+        // Let's stick to M/F colors for dots in preview as well for consistency with Saved Lineups preview
+        const isF = member?.gender?.toLowerCase() === 'female'
+        const isM = member?.gender?.toLowerCase() === 'male'
+        
+        // If gender is known, use gender color, else use role color
+        let color = isSecondary ? '168, 85, 247' : '59, 130, 246' // Purple/Blue fallback
+        if (isF) color = '244, 114, 182' // Pink-400
+        else if (isM) color = '96, 165, 250' // Blue-400
+        
+        return (
+            <div 
+               className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold text-white shadow-sm border border-slate-200"
+               style={{ 
+                   backgroundColor: member ? `rgba(${color}, ${alpha + 0.3})` : '#f1f5f9',
+                   borderColor: member ? 'transparent' : '#cbd5e1'
+               }}
+               title={member ? `${role}: ${member.full_name} (${formatWt(w)})` : `${role}: Empty`}
+            >
+               {initial}
+            </div>
+        )
+     }
+
+     return (
+        <div className="mt-4 p-3 bg-white rounded-lg border border-slate-100 shadow-sm overflow-x-auto">
+           <div className="flex items-center justify-between mb-2">
+               <h4 className="text-xs font-bold text-slate-400 uppercase">{isSecondary ? 'Alternate Chart' : 'Primary Chart'}</h4>
+               {/* Optional: Gender count here too? No, redundant with header */}
+           </div>
+           <div className="flex items-center gap-2 min-w-max">
+              <div className="flex flex-col justify-center h-full">
+                 {renderDot(drummer, 'Drummer')}
+              </div>
+              <div className="flex flex-col gap-1">
+                 <div className="flex gap-1">
+                    {(leftArr || []).map((m, i) => <div key={`l-${i}`}>{renderDot(m, `L${i+1}`)}</div>)}
+                 </div>
+                 <div className="flex gap-1">
+                    {(rightArr || []).map((m, i) => <div key={`r-${i}`}>{renderDot(m, `R${i+1}`)}</div>)}
+                 </div>
+              </div>
+              <div className="flex flex-col justify-center h-full">
+                 {renderDot(steer, 'Steer')}
+              </div>
+           </div>
+        </div>
+     )
+  }
+
   return (
-    <div>
-      <div className="flex justify-between items-center mb-6">
+    <div className="pb-48 lg:pb-10 space-y-3">
+      {/* Page Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Lineup Builder</h1>
-          {editingLineupId && (
-            <p className="text-sm text-orange-600 mt-1">
-              ✏️ Editing: {lineupName || 'Unnamed Lineup'}
-            </p>
-          )}
-        </div>
-        <div className="flex gap-2 flex-wrap justify-end">
-          <div className="flex items-center gap-1 bg-gray-100 px-3 py-1 rounded-full text-sm">
-            <span className="text-gray-600">Units:</span>
-            <button
-              onClick={() => setUnitSystem('metric')}
-              className={`px-2 py-0.5 rounded ${unitSystem === 'metric' ? 'bg-primary-600 text-white' : 'text-gray-700 hover:bg-gray-200'}`}
-            >
-              Metric
-            </button>
-            <button
-              onClick={() => setUnitSystem('imperial')}
-              className={`px-2 py-0.5 rounded ${unitSystem === 'imperial' ? 'bg-primary-600 text-white' : 'text-gray-700 hover:bg-gray-200'}`}
-            >
-              Imperial
-            </button>
+          <h1 className="page-header mb-1">Lineup Builder</h1>
+          <div className="flex items-center gap-2 text-sm text-slate-500">
+            {editingLineupId ? (
+                <>
+                    <span>Editing: <strong>{lineupName}</strong></span>
+                    <button 
+                        onClick={() => { setIsSaveAs(false); setIsCreating(true); }} 
+                        className="p-1 hover:bg-slate-100 rounded-full text-slate-400 hover:text-primary-500 transition-colors"
+                        title="Rename Lineup"
+                    >
+                        <Icon name="edit" size={14} />
+                    </button>
+                </>
+            ) : (
+                'Drafting New Lineup'
+            )}
           </div>
-          <button
-            onClick={handleResetPositions}
-            className="btn bg-gray-500 hover:bg-gray-600 text-white"
-            title="Clear all positions but keep lineup info"
-          >
-            🔄 Reset
+        </div>
+        <div className="flex flex-wrap gap-2 items-center">
+          {/* Boat Size Controls */}
+          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg mr-2">
+             <span className="text-xs font-bold text-slate-400 px-2">Rows:</span>
+             {[5, 9, 10].map(size => (
+                <button 
+                   key={size}
+                   onClick={() => handleBoatSizeChange(size)}
+                   className={`px-2 py-1 rounded-md text-xs font-bold transition-all ${boatRows === size ? 'bg-white shadow text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
+                >
+                   {size}
+                </button>
+             ))}
+             <select 
+                value={boatRows} 
+                onChange={(e) => handleBoatSizeChange(parseInt(e.target.value))}
+                className="ml-1 bg-transparent text-xs font-bold text-slate-600 focus:outline-none cursor-pointer"
+             >
+                {Array.from({length: 9}, (_, i) => i + 4).map(n => (
+                   <option key={n} value={n}>{n}</option>
+                ))}
+             </select>
+          </div>
+
+          <button onClick={() => setShowComparison(!showComparison)} className={`btn btn-sm ${showComparison ? 'btn-secondary border-blue-400 bg-blue-50 text-blue-700' : 'btn-secondary'}`}>
+             <Icon name="lineups" size={16} className="mr-1" /> Compare
           </button>
-          <button
-            onClick={handleClearLineup}
-            className="btn btn-secondary"
-            title="Clear everything and start fresh"
-          >
-            Clear All
+          <div className="bg-slate-100 p-1 rounded-lg flex items-center">
+             <button onClick={() => setUnitSystem('imperial')} className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${unitSystem === 'imperial' ? 'bg-white shadow text-slate-900' : 'text-slate-500'}`}>LB</button>
+             <button onClick={() => setUnitSystem('metric')} className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${unitSystem === 'metric' ? 'bg-white shadow text-slate-900' : 'text-slate-500'}`}>KG</button>
+          </div>
+          
+          <button onClick={handleResetPositions} className="btn btn-secondary btn-sm">
+            <Icon name="trash" size={16} className="mr-1" /> Reset
           </button>
-          {editingLineupId && (
-            <button
-              onClick={() => {
-                // Temporarily clear editing ID to save as new
-                const tempEditId = editingLineupId
-                setEditingLineupId(null)
-                setIsCreating(true)
-                // Store the temp ID in case user cancels
-                window.__tempEditId = tempEditId
-              }}
-              className="btn bg-green-600 hover:bg-green-700 text-white"
-              title="Create a new lineup based on this one"
+
+          {editingLineupId ? (
+            <>
+                <button 
+                    onClick={() => { 
+                        setIsSaveAs(true); 
+                        setLineupName(lineupName + ' (Copy)'); 
+                        setIsCreating(true); 
+                    }} 
+                    className="btn btn-secondary btn-sm"
+                >
+                    <Icon name="copy" size={16} className="mr-1" /> Copy
+                </button>
+                <button 
+                    onClick={() => { 
+                        setIsSaveAs(false); 
+                        setIsCreating(true); 
+                    }} 
+                    className="btn btn-primary btn-sm shadow-lg shadow-primary-500/20"
+                >
+                    <Icon name="check" size={16} className="mr-1" /> Update
+                </button>
+            </>
+          ) : (
+            <button 
+                onClick={() => { 
+                    setIsSaveAs(false); 
+                    setIsCreating(true); 
+                }} 
+                className="btn btn-primary btn-sm shadow-lg shadow-primary-500/20"
             >
-              💾 Save as New
+                <Icon name="check" size={16} className="mr-1" /> Save
             </button>
           )}
-          <button
-            onClick={() => setIsCreating(true)}
-            className={`btn ${editingLineupId ? 'bg-orange-600 hover:bg-orange-700 text-white' : 'btn-primary'}`}
-          >
-            {editingLineupId ? '✏️ Update Lineup' : '+ Save Lineup'}
+
+          <button onClick={() => setShowSavedLineups(true)} className="btn btn-secondary btn-sm">
+            <Icon name="lineups" size={16} className="mr-1" /> Load
           </button>
         </div>
       </div>
 
-      {/* Boat Size Selector */}
-      <div className="card mb-6">
-        <div className="flex items-center gap-4 flex-wrap">
-          <span className="font-medium text-gray-700">Boat Size:</span>
-
-          {/* Quick Select Buttons */}
-          <div className="flex gap-2">
-            {[5, 9, 10].map(size => (
-              <button
-                key={size}
-                onClick={() => handleBoatSizeChange(size)}
-                className={`px-3 py-2 rounded-lg font-medium transition-colors text-sm ${
-                  boatRows === size
-                    ? 'bg-primary-600 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                {size}
-              </button>
-            ))}
-          </div>
-
-          <span className="text-gray-400">or</span>
-
-          {/* Custom Dropdown */}
-          <div className="flex items-center gap-2">
-            <label htmlFor="boatSize" className="text-sm text-gray-600">Custom:</label>
-            <select
-              id="boatSize"
-              value={boatRows}
-              onChange={(e) => handleBoatSizeChange(parseInt(e.target.value))}
-              className="input py-2 px-3 text-sm w-20"
+      <DragDropContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+        <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-4 items-start">
+          
+          {/* Sidebar: Roster (Mobile Drawer / Desktop Sidebar) */}
+          <div
+            ref={drawerRef}
+            className={`
+              fixed bottom-0 left-0 right-0 z-50 bg-white shadow-[0_-4px_20px_-5px_rgba(0,0,0,0.15)] border-t border-slate-200 rounded-t-2xl
+              lg:sticky lg:top-32 lg:z-10 lg:shadow-sm lg:border lg:rounded-xl lg:h-auto lg:max-h-[calc(100vh-200px)] lg:flex lg:flex-col
+              ${isDraggingDrawer ? '' : 'transition-[height] duration-300 ease-out'}
+            `}
+            style={{
+              height: typeof window !== 'undefined' && window.innerWidth < 1024 ? `${drawerHeight}px` : 'auto'
+            }}
+          >
+            {/* Mobile Drawer Handle - Draggable */}
+            <div
+              className="lg:hidden w-full flex flex-col items-center pt-2 pb-1 cursor-grab active:cursor-grabbing touch-none"
+              onTouchStart={handleDrawerTouchStart}
+              onTouchMove={handleDrawerTouchMove}
+              onTouchEnd={handleDrawerTouchEnd}
             >
-              {Array.from({ length: 9 }, (_, i) => i + 4).map(size => (
-                <option key={size} value={size}>{size}</option>
-              ))}
-            </select>
-            <span className="text-sm text-gray-600">rows</span>
-          </div>
+              <div className={`w-12 h-1.5 rounded-full transition-colors ${isDraggingDrawer ? 'bg-primary-400' : 'bg-slate-300'}`} />
+              <div className="text-[10px] text-slate-400 mt-1">Drag to resize</div>
+            </div>
 
-          {/* Info */}
-          <span className="text-sm text-gray-600 ml-auto">
-            = {boatRows * 2} paddlers + drummer + steersperson = <strong>{boatRows * 2 + 2} total</strong>
-          </span>
-        </div>
-      </div>
-
-      {/* Save/Update Lineup Modal */}
-      {isCreating && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">
-              {editingLineupId ? 'Update Lineup' : window.__tempEditId ? 'Save as New Lineup' : 'Save Lineup'}
-            </h2>
-            {editingLineupId && (
-              <div className="mb-4 p-3 bg-orange-50 border border-orange-200 rounded-lg">
-                <p className="text-sm text-orange-800">
-                  ✏️ You are editing an existing lineup. Changes will be saved to the current lineup.
-                </p>
-              </div>
-            )}
-            {!editingLineupId && window.__tempEditId && (
-              <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
-                <p className="text-sm text-green-800">
-                  💾 This will create a new lineup based on your current configuration. The original lineup will remain unchanged.
-                </p>
-              </div>
-            )}
-            <div className="space-y-4">
-              <div>
-                <label htmlFor="lineupName" className="label">
-                  Lineup Name *
-                </label>
-                <input
-                  id="lineupName"
-                  type="text"
-                  className="input"
-                  placeholder="Saturday Race Lineup"
-                  value={lineupName}
-                  onChange={(e) => setLineupName(e.target.value)}
-                />
-              </div>
-              <div>
-                <label htmlFor="lineupNotes" className="label">
-                  Notes (Optional)
-                </label>
-                <textarea
-                  id="lineupNotes"
-                  className="input"
-                  rows="3"
-                  placeholder="Add notes about this lineup..."
-                  value={lineupNotes}
-                  onChange={(e) => setLineupNotes(e.target.value)}
-                />
+            <div className="px-4 pb-2 lg:p-4 lg:border-b lg:border-slate-100 flex justify-between items-center lg:bg-slate-50/50 lg:rounded-t-xl sticky top-0 z-20 bg-white">
+              <h3 className="font-bold text-slate-800 flex items-center gap-2 text-sm lg:text-base">
+                <Icon name="roster" size={18} className="text-slate-400" />
+                Available ({availableMembers.length})
+              </h3>
+              {/* Quick snap buttons for mobile */}
+              <div className="lg:hidden flex items-center gap-1">
+                <button
+                  onClick={() => snapDrawerTo(DRAWER_MIN)}
+                  className={`w-6 h-6 rounded flex items-center justify-center text-xs ${drawerHeight <= DRAWER_MIN + 20 ? 'bg-primary-100 text-primary-600' : 'bg-slate-100 text-slate-500'}`}
+                  title="Minimize"
+                >
+                  ▼
+                </button>
+                <button
+                  onClick={() => snapDrawerTo(DRAWER_MID)}
+                  className={`w-6 h-6 rounded flex items-center justify-center text-xs ${drawerHeight > DRAWER_MIN + 20 && drawerHeight < DRAWER_MAX - 50 ? 'bg-primary-100 text-primary-600' : 'bg-slate-100 text-slate-500'}`}
+                  title="Half"
+                >
+                  ◆
+                </button>
+                <button
+                  onClick={() => snapDrawerTo(DRAWER_MAX)}
+                  className={`w-6 h-6 rounded flex items-center justify-center text-xs ${drawerHeight >= DRAWER_MAX - 50 ? 'bg-primary-100 text-primary-600' : 'bg-slate-100 text-slate-500'}`}
+                  title="Maximize"
+                >
+                  ▲
+                </button>
               </div>
             </div>
-            <div className="flex justify-end gap-3 mt-6">
-              <button
-                onClick={() => {
-                  // Restore editing state if user was doing "Save as New"
-                  if (window.__tempEditId) {
-                    setEditingLineupId(window.__tempEditId)
-                    window.__tempEditId = null
-                  }
-                  setIsCreating(false)
-                }}
-                className="btn btn-secondary"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSaveLineup}
-                className={`btn ${editingLineupId ? 'bg-orange-600 hover:bg-orange-700 text-white' : window.__tempEditId ? 'bg-green-600 hover:bg-green-700 text-white' : 'btn-primary'}`}
-              >
-                {editingLineupId ? 'Update' : window.__tempEditId ? 'Save as New' : 'Save'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Port vs Starboard Balance */}
-      <div className="mb-6">
-        <DragonBoatLeftRightPanel
-          layout={cogLayout}
-          athletes={cogAthletes}
-          lineup={cogLineup}
-        />
-      </div>
-
-      {/* COG & Seat Heatmap */}
-      <div className="card mb-6">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="font-semibold text-gray-900">Center of Gravity & Seat Heatmap</h3>
-          <p className="text-xs text-gray-500">Uses current seat assignments; missing weights count as 0.</p>
-        </div>
-        <DragonBoatCogPanel
-          layout={cogLayout}
-          athletes={cogAthletes}
-          lineup={cogLineup}
-        />
-      </div>
-
-      <DragDropContext onDragEnd={handleDragEnd}>
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Available Members Pool */}
-          <div className="lg:col-span-1">
-            <div className="card">
-              <h3 className="font-semibold text-gray-900 mb-4">Available Members ({availableMembers.length})</h3>
-
-              {/* Practice Selector */}
-              <div className="mb-4 space-y-3">
-                <div>
-                  <label htmlFor="practiceSelect" className="label text-xs">
-                    Filter by Practice
-                  </label>
-                  <select
-                    id="practiceSelect"
-                    className="input text-sm"
-                    value={selectedPracticeId}
-                    onChange={(e) => {
-                      setSelectedPracticeId(e.target.value)
-                      setRsvpFilter('all') // Reset RSVP filter when changing practice
-                    }}
-                  >
-                    <option value="">All Members</option>
+            
+            <div className="px-4 pb-2 lg:p-3 lg:bg-slate-50 lg:border-b lg:border-slate-100 space-y-2 sticky top-[56px] z-20">
+               <select 
+                 className="input text-xs py-1.5 w-full" 
+                 value={selectedPracticeId ? `practice_${selectedPracticeId}` : selectedEventId ? `event_${selectedEventId}` : ''}
+                 onChange={(e) => {
+                    const val = e.target.value
+                    if (val.startsWith('practice_')) { setSelectedPracticeId(val.split('_')[1]); setSelectedEventId('') }
+                    else if (val.startsWith('event_')) { setSelectedEventId(val.split('_')[1]); setSelectedPracticeId('') }
+                    else { setSelectedPracticeId(''); setSelectedEventId('') }
+                 }}
+               >
+                 <option value="">All Active Members</option>
+                 <optgroup label="Practices">
                     {practices
-                      .filter(p => new Date(p.date) >= new Date(new Date().setHours(0, 0, 0, 0)))
-                      .map(practice => (
-                        <option key={practice.id} value={practice.id}>
-                          {new Date(practice.date).toLocaleDateString()} - {practice.title}
-                        </option>
-                      ))}
-                  </select>
-                </div>
+                       .filter(p => new Date(p.date) >= new Date(new Date().setHours(0,0,0,0)))
+                       .sort((a, b) => new Date(a.date) - new Date(b.date))
+                       .slice(0, 10)
+                       .map(p => <option key={p.id} value={`practice_${p.id}`}>{new Date(p.date).toLocaleDateString()} - {p.title}</option>)}
+                 </optgroup>
+                 <optgroup label="Races">
+                    {events
+                       .filter(e => e.event_type === 'race' && new Date(e.event_date) >= new Date(new Date().setHours(0,0,0,0)))
+                       .sort((a, b) => new Date(a.event_date) - new Date(b.event_date))
+                       .slice(0, 10)
+                       .map(e => <option key={e.id} value={`event_${e.id}`}>{new Date(e.event_date).toLocaleDateString()} - {e.title}</option>)}
+                 </optgroup>
+                 <optgroup label="Other Events">
+                    {events
+                       .filter(e => e.event_type !== 'race' && new Date(e.event_date) >= new Date(new Date().setHours(0,0,0,0)))
+                       .sort((a, b) => new Date(a.event_date) - new Date(b.event_date))
+                       .slice(0, 10)
+                       .map(e => <option key={e.id} value={`event_${e.id}`}>{new Date(e.event_date).toLocaleDateString()} - {e.title}</option>)}
+                 </optgroup>
+               </select>
 
-                {/* RSVP Filter - Only show when practice is selected */}
-                {selectedPracticeId && (
-                  <div>
-                    <label htmlFor="rsvpFilter" className="label text-xs">
-                      RSVP Status
-                    </label>
-                    <select
-                      id="rsvpFilter"
-                      className="input text-sm"
+               {(selectedPracticeId || selectedEventId) && (
+                   <select 
+                      className="input text-xs py-1.5 w-full"
                       value={rsvpFilter}
                       onChange={(e) => setRsvpFilter(e.target.value)}
-                    >
+                   >
                       <option value="all">All Statuses</option>
                       <option value="yes">✓ Attending</option>
                       <option value="maybe">? Maybe</option>
                       <option value="no_response">· No Response</option>
                       <option value="no">✗ Not Attending</option>
-                    </select>
-                  </div>
-                )}
+                   </select>
+               )}
+            </div>
 
-                {/* Legend */}
-                {selectedPracticeId && (
-                  <div className="text-xs bg-gray-50 p-2 rounded">
-                    <div className="font-semibold text-gray-700 mb-1">RSVP Legend:</div>
-                    <div className="flex flex-wrap gap-2">
-                      <span className="flex items-center gap-1">
-                        <div className="w-4 h-4 rounded-full bg-green-500 text-white flex items-center justify-center font-bold">✓</div>
-                        <span className="text-gray-600">Yes</span>
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <div className="w-4 h-4 rounded-full bg-yellow-500 text-white flex items-center justify-center font-bold">?</div>
-                        <span className="text-gray-600">Maybe</span>
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <div className="w-4 h-4 rounded-full bg-gray-400 text-white flex items-center justify-center font-bold">·</div>
-                        <span className="text-gray-600">None</span>
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <div className="w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center font-bold">✗</div>
-                        <span className="text-gray-600">No</span>
-                      </span>
-                    </div>
-                  </div>
-                )}
-              </div>
-
+            <div className="flex-1 overflow-y-auto p-3 bg-slate-50/30 lg:rounded-b-xl overscroll-contain">
               <Droppable droppableId="available">
                 {(provided, snapshot) => (
                   <div
                     ref={provided.innerRef}
                     {...provided.droppableProps}
-                    className={`min-h-[400px] p-2 border-2 border-dashed rounded-lg ${
-                      snapshot.isDraggingOver ? 'bg-primary-50 border-primary-300' : 'border-gray-300'
-                    }`}
+                    className={`min-h-[100px] lg:min-h-[200px] transition-colors rounded-xl ${snapshot.isDraggingOver ? 'bg-blue-50/50 ring-2 ring-blue-100' : ''} grid grid-cols-2 lg:grid-cols-1 gap-2`}
+                    style={{ touchAction: 'pan-y' }} // Allow vertical scroll but improve drag
                   >
-                    {availableMembers.map((member, index) => (
-                      <MemberCard key={member.id} member={member} index={index} />
-                    ))}
+                    {availableMembers.length === 0 ? (
+                      <div className="col-span-2 lg:col-span-1 text-center py-8 text-slate-400 text-sm">
+                        All members are in the lineup
+                      </div>
+                    ) : (
+                      availableMembers.map((m, i) => <MemberCard key={m.id} member={m} index={i} isSecondary={false} />)
+                    )}
                     {provided.placeholder}
                   </div>
                 )}
@@ -1073,180 +1074,281 @@ export default function Lineups() {
             </div>
           </div>
 
-          {/* Boat Visualization */}
-          <div className="lg:col-span-3">
-            <div className="card">
-              <h3 className="font-semibold text-gray-900 mb-4">Dragon Boat (Standard 20)</h3>
-
-              <div className="space-y-4">
-                {/* Drummer */}
-                <div>
-                  <h4 className="text-sm font-medium text-gray-700 mb-2">Drummer</h4>
-                  <BoatPosition
-                    droppableId="drummer"
-                    member={boatPositions.drummer}
-                    label="Drag drummer here"
-                    secondaryMember={boatPositions.drummer_secondary}
-                  />
-                </div>
-
-                {/* Paddlers Grid */}
-                <div>
-                  <h4 className="text-sm font-medium text-gray-700 mb-2">Paddlers</h4>
-                  <div className="grid grid-cols-2 gap-4">
-                    {/* Left Side */}
-                    <div>
-                      <h5 className="text-xs font-medium text-gray-600 mb-2 text-center">Left Side</h5>
-                      <div className="space-y-2">
-                        {boatPositions.left.map((member, index) => (
-                          <div key={index} className="flex items-center gap-2">
-                            <span className="text-xs font-medium text-gray-500 w-6">{index + 1}</span>
-                            <div className="flex-1">
-                              <BoatPosition
-                                droppableId={`left-${index}`}
-                                member={member}
-                                label={`Position ${index + 1}`}
-                                side="left"
-                                secondaryMember={boatPositions.left_secondary?.[index]}
-                              />
-                            </div>
-                          </div>
-                        ))}
-                      </div>
+          <div className="space-y-4 lg:order-last">
+            
+            {showBalancePanels && (
+              <div className="space-y-3">
+                 {/* ... Balance Panels ... */}
+                 <div className="relative">
+                    <div className="flex items-center justify-between mb-2 ml-1">
+                        {showComparison && <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wide">Primary Lineup</h3>}
+                        <GenderCount count={primaryGenderCount} />
                     </div>
-
-                    {/* Right Side */}
-                    <div>
-                      <h5 className="text-xs font-medium text-gray-600 mb-2 text-center">Right Side</h5>
-                      <div className="space-y-2">
-                        {boatPositions.right.map((member, index) => (
-                          <div key={index} className="flex items-center gap-2">
-                            <span className="text-xs font-medium text-gray-500 w-6">{index + 1}</span>
-                            <div className="flex-1">
-                              <BoatPosition
-                                droppableId={`right-${index}`}
-                                member={member}
-                                label={`Position ${index + 1}`}
-                                side="right"
-                                secondaryMember={boatPositions.right_secondary?.[index]}
-                              />
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Steersperson */}
-                <div>
-                  <h4 className="text-sm font-medium text-gray-700 mb-2">Steersperson</h4>
-                  <BoatPosition
-                    droppableId="steersperson"
-                    member={boatPositions.steersperson}
-                    label="Drag steersperson here"
-                    secondaryMember={boatPositions.steersperson_secondary}
-                  />
-                </div>
-
-                {/* Alternates Section */}
-                <div className="mt-6 pt-6 border-t-2 border-gray-300">
-                  <h4 className="text-lg font-semibold text-gray-900 mb-3">Alternates</h4>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    {boatPositions.alternates.map((member, index) => (
-                      <div key={index}>
-                        <h5 className="text-xs font-medium text-gray-600 mb-1">Alternate {index + 1}</h5>
-                        <BoatPosition
-                          droppableId={`alternate-${index}`}
-                          member={member}
-                          label={`Alt ${index + 1}`}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <DragonBoatLeftRightPanel 
+                           layout={cogLayout} 
+                           athletes={cogAthletes} 
+                           lineup={cogLineup} 
+                           unitSystem={unitSystem} 
+                           formatWeight={formatWt} 
                         />
-                      </div>
-                    ))}
-                  </div>
-                  <p className="text-xs text-gray-500 mt-2">
-                    Alternates are not included in balance calculations
-                  </p>
-                </div>
+                        <DragonBoatCogPanel 
+                           layout={cogLayout} 
+                           athletes={cogAthletes} 
+                           lineup={cogLineup} 
+                           formatWeight={formatWt} 
+                        />
+                    </div>
+                    {showComparison && <LineupVisualPreview isSecondary={false} />}
+                 </div>
+
+                 {showComparison && (
+                    <div className="relative p-4 rounded-xl bg-purple-50/50 border border-purple-100">
+                        <div className="flex items-center justify-between mb-2 ml-1">
+                            <h3 className="text-xs font-bold text-purple-400 uppercase tracking-wide flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full bg-purple-400"></span>
+                                Secondary Lineup
+                            </h3>
+                            <GenderCount count={secondaryGenderCount} />
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                           <DragonBoatLeftRightPanel 
+                              layout={cogLayout} 
+                              athletes={cogAthletes} 
+                              lineup={cogLineupSecondary} 
+                              unitSystem={unitSystem} 
+                              formatWeight={formatWt} 
+                           />
+                           <DragonBoatCogPanel 
+                              layout={cogLayout} 
+                              athletes={cogAthletes} 
+                              lineup={cogLineupSecondary} 
+                              formatWeight={formatWt} 
+                           />
+                        </div>
+                        <LineupVisualPreview isSecondary={true} />
+                    </div>
+                 )}
               </div>
+            )}
+
+            <div className="relative">
+               <div className="absolute inset-0 bg-slate-100 rounded-[3rem] -z-10 opacity-50 transform scale-x-105" />
+
+               <div className="space-y-2 p-2">
+                  <div className="flex justify-center mb-4">
+                     <div className="w-32">
+                        <BoatPosition 
+                           id="drummer" 
+                           member={boatPositions.drummer} 
+                           label="Drummer" 
+                           secondaryMember={boatPositions.drummer_secondary} 
+                           leverage={seatLeverageMap.get('drummer') || 0} 
+                           secondaryLeverage={seatLeverageMapSecondary.get('drummer') || 0}
+                        />
+                     </div>
+                  </div>
+
+                  <div className="space-y-1">
+                     {boatPositions.left.map((_, i) => (
+                        <div key={i} className="flex items-center justify-center gap-2 md:gap-4">
+                           <div className="flex-1 max-w-[200px]">
+                              <BoatPosition 
+                                 id={`left-${i}`} 
+                                 member={boatPositions.left[i]} 
+                                 label={`Left ${i+1}`} 
+                                 secondaryMember={boatPositions.left_secondary?.[i]} 
+                                 leverage={seatLeverageMap.get(`L${i+1}`) || 0} 
+                                 secondaryLeverage={seatLeverageMapSecondary.get(`L${i+1}`) || 0}
+                              />
+                           </div>
+                           <div className="w-6 text-center text-[10px] font-bold text-slate-300">{i+1}</div>
+                           <div className="flex-1 max-w-[200px]">
+                              <BoatPosition 
+                                 id={`right-${i}`} 
+                                 member={boatPositions.right[i]} 
+                                 label={`Right ${i+1}`} 
+                                 secondaryMember={boatPositions.right_secondary?.[i]} 
+                                 leverage={seatLeverageMap.get(`R${i+1}`) || 0} 
+                                 secondaryLeverage={seatLeverageMapSecondary.get(`R${i+1}`) || 0}
+                              />
+                           </div>
+                        </div>
+                     ))}
+                  </div>
+
+                  <div className="flex justify-center mt-4">
+                     <div className="w-32">
+                        <BoatPosition 
+                           id="steersperson" 
+                           member={boatPositions.steersperson} 
+                           label="Steer" 
+                           secondaryMember={boatPositions.steersperson_secondary} 
+                           leverage={seatLeverageMap.get('steer') || 0} 
+                           secondaryLeverage={seatLeverageMapSecondary.get('steer') || 0}
+                        />
+                     </div>
+                  </div>
+               </div>
             </div>
+
+            <div className="card bg-slate-50 border-dashed border-2 border-slate-200">
+               <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Alternates / Reserves</h4>
+               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {boatPositions.alternates.map((_, i) => (
+                     <BoatPosition key={i} id={`alternate-${i}`} member={boatPositions.alternates[i]} label={`Alt ${i+1}`} />
+                  ))}
+               </div>
+            </div>
+
           </div>
         </div>
       </DragDropContext>
+      {/* ... modals ... */}
+      {isCreating && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 animate-in fade-in zoom-in-95 duration-200">
+              <h2 className="text-xl font-bold text-slate-900 mb-4">
+                {isSaveAs ? 'Save as New Lineup' : (editingLineupId ? 'Update Lineup' : 'Save Lineup')}
+              </h2>
+              <input 
+                className="input mb-4" 
+                placeholder="Lineup Name (e.g., Race 1 Heat)" 
+                value={lineupName} 
+                onChange={e => setLineupName(e.target.value)} 
+                autoFocus
+              />
+              <textarea 
+                className="input mb-6" 
+                rows="3" 
+                placeholder="Notes..." 
+                value={lineupNotes} 
+                onChange={e => setLineupNotes(e.target.value)} 
+              />
+              <div className="flex justify-end gap-3">
+                 <button onClick={() => setIsCreating(false)} className="btn btn-secondary">Cancel</button>
+                 <button onClick={handleSaveLineup} className="btn btn-primary">
+                    {isSaveAs ? 'Save Copy' : (editingLineupId ? 'Update' : 'Save')}
+                 </button>
+              </div>
+           </div>
+        </div>
+      )}
 
-      {/* Saved Lineups */}
-      <div className="card mt-6">
-        <h3 className="font-semibold text-gray-900 mb-4">Saved Lineups</h3>
-        {loading ? (
-          <p className="text-gray-600">Loading lineups...</p>
-        ) : lineups.length === 0 ? (
-          <p className="text-gray-600">No saved lineups yet. Create your first lineup above!</p>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {lineups.map((lineup) => {
-              const lineupBalance = lineup.positions?.balance
-              return (
-                <div key={lineup.id} className="border rounded-lg p-4 hover:shadow-md transition-shadow bg-white">
-                  <div className="flex items-start justify-between mb-2">
-                    <h4 className="font-semibold text-gray-900">{lineup.name}</h4>
-                    {lineupBalance && (
-                      <div className="text-right">
-                        <p className="text-xs font-semibold text-gray-900">
-                          {lineupBalance.totalWeight?.toFixed(0)} kg
-                        </p>
-                      </div>
-                    )}
-                  </div>
+      {showSavedLineups && (
+         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[80vh] flex flex-col animate-in fade-in zoom-in-95 duration-200">
+               <div className="p-4 border-b border-slate-100 flex justify-between items-center">
+                  <h2 className="text-lg font-bold text-slate-900">Saved Lineups</h2>
+                  <button onClick={() => setShowSavedLineups(false)}><Icon name="close" size={20} /></button>
+               </div>
+               <div className="flex-1 overflow-y-auto p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 bg-slate-50/50">
+                  {lineups.map(l => {
+                     const stats = computeSavedLineupStats(l)
+                     return (
+                     <div key={l.id} className="card hover:shadow-md transition-all cursor-pointer group" onClick={() => { handleLoadLineup(l); setShowSavedLineups(false); }}>
+                        <div className="flex justify-between items-start">
+                           <h3 className="font-bold text-slate-800 group-hover:text-primary-600 transition-colors">{l.name}</h3>
+                           <span className="text-xs text-slate-400">{new Date(l.created_at).toLocaleDateString()}</span>
+                        </div>
+                        {l.notes && <p className="text-xs text-slate-500 mt-1 line-clamp-2">{l.notes}</p>}
+                        
+                        {/* Mini Stats */}
+                        {stats && (
+                           <div className="mt-2 grid grid-cols-3 gap-2 text-[10px] font-medium text-slate-500">
+                              <div 
+                                className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded cursor-help col-span-1"
+                                title={`Port: ${formatWt(stats.bal.portWeight)} | Starboard: ${formatWt(stats.bal.starboardWeight)} | Delta: ${formatWt(stats.delta)}`}
+                              >
+                                 <Icon name="lineups" size={12} />
+                                 <span>{stats.bal?.statusLabel} ({formatWt(stats.delta)})</span>
+                              </div>
+                              <div 
+                                className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded cursor-help col-span-1 justify-center"
+                                title={`Total Weight: ${formatWt(stats.cog.totalWeight)}`}
+                              >
+                                 <Icon name="target" size={12} />
+                                 <span>{stats.cog?.xCg.toFixed(2)}</span>
+                              </div>
+                              <div className="col-span-1 flex justify-end">
+                                <div className="flex items-center gap-2 text-xs font-medium text-slate-600 bg-slate-50 px-2 py-1 rounded-lg border border-slate-100">
+                                    <div className="flex items-center gap-1">
+                                        <span className="w-2 h-2 rounded-full bg-blue-400"></span>
+                                        <span>{stats.genders.m}</span>
+                                    </div>
+                                    <span className="text-slate-300">|</span>
+                                    <div className="flex items-center gap-1">
+                                        <span className="w-2 h-2 rounded-full bg-pink-400"></span>
+                                        <span>{stats.genders.f}</span>
+                                    </div>
+                                </div>
+                              </div>
+                           </div>
+                        )}
 
-                  {lineup.notes && (
-                    <p className="text-sm text-gray-600 mb-2">{lineup.notes}</p>
-                  )}
+                        {/* Transposed Preview */}
+                        <div className="mt-3 p-2 bg-white border border-slate-100 rounded-lg shadow-inner flex flex-col gap-1">
+                           <div className="flex gap-1 justify-center">
+                              {(l.positions?.paddlers?.left || []).map((id, idx) => {
+                                 const d = getMemberDetailsForPreview(id);
+                                 const w = d.weight;
+                                 const max = 100; 
+                                 const alpha = w > 0 ? Math.min(1, Math.max(0.2, w / max)) : 0.1;
+                                 const isF = d.gender === 'female'
+                                 const isM = d.gender === 'male'
+                                 const color = isF ? '244, 114, 182' : isM ? '96, 165, 250' : '148, 163, 184'
+                                 
+                                 return (
+                                    <div 
+                                       key={idx} 
+                                       className="w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-bold text-white shadow-sm" 
+                                       style={{ backgroundColor: id ? `rgba(${color}, ${alpha + 0.3})` : '#f1f5f9', border: id ? 'none' : '1px solid #cbd5e1' }} 
+                                       title={w > 0 ? `${d.name} - ${formatWt(w)}` : 'Empty'}
+                                    >
+                                       {id && d.initial}
+                                    </div>
+                                 );
+                              })}
+                           </div>
+                           <div className="flex gap-1 justify-center">
+                              {(l.positions?.paddlers?.right || []).map((id, idx) => {
+                                 const d = getMemberDetailsForPreview(id);
+                                 const w = d.weight;
+                                 const max = 100;
+                                 const alpha = w > 0 ? Math.min(1, Math.max(0.2, w / max)) : 0.1;
+                                 const isF = d.gender === 'female'
+                                 const isM = d.gender === 'male'
+                                 const color = isF ? '244, 114, 182' : isM ? '96, 165, 250' : '148, 163, 184'
 
-                  {lineupBalance && (
-                    <div className="space-y-1 mb-3">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-gray-600">L/R Balance:</span>
-                        <span className={`font-semibold ${getBalanceStatus(lineupBalance.sideBalance).color}`}>
-                          {getBalanceStatus(lineupBalance.sideBalance).label}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-gray-600">F/B Balance:</span>
-                        <span className={`font-semibold ${getBalanceStatus(lineupBalance.frontBackBalance).color}`}>
-                          {getBalanceStatus(lineupBalance.frontBackBalance).label}
-                        </span>
-                      </div>
-                    </div>
-                  )}
+                                 return (
+                                    <div 
+                                       key={idx} 
+                                       className="w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-bold text-white shadow-sm" 
+                                       style={{ backgroundColor: id ? `rgba(${color}, ${alpha + 0.3})` : '#f1f5f9', border: id ? 'none' : '1px solid #cbd5e1' }}
+                                       title={w > 0 ? `${d.name} - ${formatWt(w)}` : 'Empty'}
+                                    >
+                                       {id && d.initial}
+                                    </div>
+                                 );
+                              })}
+                           </div>
+                        </div>
 
-                  <p className="text-xs text-gray-500 mb-3">
-                    Created by {lineup.created_by_profile?.full_name || 'Unknown'}
-                  </p>
-
-                  <div className="flex gap-2">
-                    <button
-                      className="flex-1 text-sm bg-primary-600 text-white px-3 py-1.5 rounded hover:bg-primary-700 font-medium"
-                      onClick={() => handleLoadLineup(lineup)}
-                    >
-                      Load
-                    </button>
-                    <button
-                      className="text-sm text-red-600 hover:text-red-700 font-medium px-3 py-1.5"
-                      onClick={() => {
-                        if (confirm(`Delete lineup "${lineup.name}"?`)) {
-                          deleteLineup(lineup.id)
-                        }
-                      }}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </div>
+                        <div className="mt-3 flex justify-end gap-2">
+                           <button 
+                              onClick={(e) => { e.stopPropagation(); if(confirm('Delete?')) deleteLineup(l.id); }}
+                              className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded"
+                           >
+                              <Icon name="trash" size={14} />
+                           </button>
+                        </div>
+                     </div>
+                  )})}
+                  {lineups.length === 0 && <p className="text-center col-span-full text-slate-500 py-8">No saved lineups found.</p>}
+               </div>
+            </div>
+         </div>
+      )}
     </div>
   )
 }

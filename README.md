@@ -6,9 +6,10 @@ A modern web application for managing dragon boat teams, built with React and Su
 
 - ✅ User authentication (sign up, sign in, sign out)
 - ✅ User profiles with dragon boat specific fields
-- 🚧 Practice scheduling and RSVP system (coming soon)
-- 🚧 Team roster management (coming soon)
-- 🚧 Boat lineup builder (coming soon)
+- ✅ Practice scheduling and RSVP system
+- ✅ Team roster management
+- ✅ Boat lineup builder
+- ✅ Events & Race Management
 - 🚧 Team announcements (coming soon)
 
 ## Tech Stack

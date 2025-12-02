@@ -1,0 +1,25 @@
+column_name,data_type
+id,uuid
+prospective_race_id,uuid
+created_by,uuid
+name,character varying
+location,character varying
+venue_address,text
+description,text
+race_date,date
+race_start_time,time without time zone
+race_end_time,time without time zone
+captains_meeting_date,timestamp without time zone
+team_briefing_date,timestamp without time zone
+lineup_submission_deadline,timestamp without time zone
+payment_due_date,date
+registration_confirmed,boolean
+registration_notes,text
+total_cost,numeric
+per_person_cost,numeric
+payment_status,character varying
+is_visible_to_members,boolean
+notes,text
+external_link,character varying
+created_at,timestamp without time zone
+updated_at,timestamp without time zone

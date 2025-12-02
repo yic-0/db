@@ -5,16 +5,15 @@ import Layout from './components/Layout'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Practices from './pages/Practices'
-import PracticePrep from './pages/PracticePrep'
 import Roster from './pages/Roster'
 import Lineups from './pages/Lineups'
 import Profile from './pages/Profile'
 import Announcements from './pages/Announcements'
-import Events from './pages/Events'
+import Race from './pages/Race'
 import EventDetail from './pages/EventDetail'
 import Workouts from './pages/Workouts'
 import Calendar from './pages/Calendar'
-import CogDemoPage from './pages/CogDemoPage'
+import Notifications from './pages/Notifications'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuthStore()
@@ -51,15 +50,14 @@ function App() {
           >
             <Route index element={<Dashboard />} />
             <Route path="practices" element={<Practices />} />
-            <Route path="practice-prep" element={<PracticePrep />} />
             <Route path="roster" element={<Roster />} />
             <Route path="lineups" element={<Lineups />} />
-            <Route path="events" element={<Events />} />
+            <Route path="race" element={<Race />} />
             <Route path="events/:eventId" element={<EventDetail />} />
             <Route path="workouts" element={<Workouts />} />
             <Route path="calendar" element={<Calendar />} />
-            <Route path="cog-demo" element={<CogDemoPage />} />
             <Route path="announcements" element={<Announcements />} />
+            <Route path="notifications" element={<Notifications />} />
             <Route path="profile" element={<Profile />} />
           </Route>
         </Routes>

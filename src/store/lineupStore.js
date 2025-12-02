@@ -223,5 +223,115 @@ export const useLineupStore = create((set, get) => ({
       toast.error(error.message)
       return { success: false, error }
     }
+  },
+
+  // Fetch lineups for a specific event
+  fetchEventLineups: async (eventId) => {
+    try {
+      const { data, error } = await supabase
+        .from('lineups')
+        .select(`
+          *,
+          created_by_profile:profiles!lineups_created_by_fkey(id, full_name)
+        `)
+        .eq('event_id', eventId)
+        .order('created_at', { ascending: true })
+
+      if (error) throw error
+      return { success: true, data: data || [] }
+    } catch (error) {
+      console.error('Error fetching event lineups:', error)
+      return { success: false, error, data: [] }
+    }
+  },
+
+  // Link existing lineup to event
+  linkLineupToEvent: async (lineupId, eventId, boatName = null) => {
+    try {
+      const updates = { event_id: eventId }
+      if (boatName) updates.boat_name = boatName
+
+      const { data, error } = await supabase
+        .from('lineups')
+        .update(updates)
+        .eq('id', lineupId)
+        .select(`
+          *,
+          created_by_profile:profiles!lineups_created_by_fkey(id, full_name)
+        `)
+        .single()
+
+      if (error) throw error
+
+      set((state) => ({
+        lineups: state.lineups.map((l) => (l.id === lineupId ? data : l)),
+        currentLineup: state.currentLineup?.id === lineupId ? data : state.currentLineup
+      }))
+
+      toast.success('Lineup linked to event!')
+      return { success: true, data }
+    } catch (error) {
+      console.error('Error linking lineup to event:', error)
+      toast.error(error.message)
+      return { success: false, error }
+    }
+  },
+
+  // Unlink lineup from event
+  unlinkLineupFromEvent: async (lineupId) => {
+    try {
+      const { data, error } = await supabase
+        .from('lineups')
+        .update({ event_id: null })
+        .eq('id', lineupId)
+        .select(`
+          *,
+          created_by_profile:profiles!lineups_created_by_fkey(id, full_name)
+        `)
+        .single()
+
+      if (error) throw error
+
+      set((state) => ({
+        lineups: state.lineups.map((l) => (l.id === lineupId ? data : l)),
+        currentLineup: state.currentLineup?.id === lineupId ? data : state.currentLineup
+      }))
+
+      toast.success('Lineup unlinked from event')
+      return { success: true, data }
+    } catch (error) {
+      console.error('Error unlinking lineup from event:', error)
+      toast.error(error.message)
+      return { success: false, error }
+    }
+  },
+
+  // Toggle lineup visibility for members
+  toggleLineupVisibility: async (lineupId, isVisible) => {
+    try {
+      const { data, error } = await supabase
+        .from('lineups')
+        .update({ is_visible_to_members: isVisible })
+        .eq('id', lineupId)
+        .select(`
+          *,
+          created_by_profile:profiles!lineups_created_by_fkey(id, full_name)
+        `)
+        .single()
+
+      if (error) throw error
+
+      set((state) => ({
+        lineups: state.lineups.map((l) => (l.id === lineupId ? data : l)),
+        currentLineup: state.currentLineup?.id === lineupId ? data : state.currentLineup
+      }))
+
+      toast.success(isVisible ? 'Lineup published to team' : 'Lineup hidden from team')
+      return { success: true, data }
+    } catch (error) {
+      console.error('Error toggling lineup visibility:', error)
+      toast.error(error.message)
+      return { success: false, error }
+    }
   }
 }))

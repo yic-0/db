@@ -13,6 +13,16 @@ export const useWorkoutStore = create((set, get) => ({
   assignments: [],
   loading: false,
 
+  // Exercise Library
+  exerciseCategories: [],
+  exercises: [],
+  exerciseCompletions: [],
+  trainingPlans: [],
+
+  // Practice Drills
+  drillCategories: [],
+  drills: [],
+
   // Fetch workout types
   fetchWorkoutTypes: async () => {
     try {
@@ -567,6 +577,299 @@ export const useWorkoutStore = create((set, get) => ({
       console.error('Error bulk assigning:', error)
       toast.error(error.message)
       return { success: false, error }
+    }
+  },
+
+  // =============================================
+  // EXERCISE LIBRARY FUNCTIONS
+  // =============================================
+
+  // Fetch exercise categories
+  fetchExerciseCategories: async () => {
+    try {
+      const { data, error } = await supabase
+        .from('exercise_categories')
+        .select('*')
+        .order('sort_order')
+
+      if (error) throw error
+      set({ exerciseCategories: data || [] })
+    } catch (error) {
+      console.error('Error fetching exercise categories:', error)
+    }
+  },
+
+  // Fetch exercises
+  fetchExercises: async () => {
+    try {
+      const { data, error } = await supabase
+        .from('exercises')
+        .select(`
+          *,
+          category:exercise_categories(id, name, icon, color)
+        `)
+        .eq('is_active', true)
+        .order('name')
+
+      if (error) throw error
+      set({ exercises: data || [] })
+    } catch (error) {
+      console.error('Error fetching exercises:', error)
+    }
+  },
+
+  // Create custom exercise
+  createExercise: async (exerciseData) => {
+    try {
+      const { data, error } = await supabase
+        .from('exercises')
+        .insert([{ ...exerciseData, is_system: false }])
+        .select()
+        .single()
+
+      if (error) throw error
+
+      await get().fetchExercises()
+      toast.success('Exercise added!')
+      return { success: true, data }
+    } catch (error) {
+      console.error('Error creating exercise:', error)
+      toast.error(error.message)
+      return { success: false, error }
+    }
+  },
+
+  // Fetch exercise completions for a user and date range
+  fetchExerciseCompletions: async (userId, startDate = null, endDate = null) => {
+    try {
+      let query = supabase
+        .from('exercise_completions')
+        .select(`
+          *,
+          exercise:exercises(id, name, category_id)
+        `)
+        .eq('user_id', userId)
+        .order('completion_date', { ascending: false })
+
+      if (startDate) {
+        query = query.gte('completion_date', startDate)
+      }
+      if (endDate) {
+        query = query.lte('completion_date', endDate)
+      }
+
+      const { data, error } = await query
+
+      if (error) throw error
+      set({ exerciseCompletions: data || [] })
+      return data || []
+    } catch (error) {
+      console.error('Error fetching exercise completions:', error)
+      return []
+    }
+  },
+
+  // Fetch all team completions for a date (for the team view)
+  fetchTeamCompletions: async (date) => {
+    try {
+      const { data, error } = await supabase
+        .from('exercise_completions')
+        .select(`
+          *,
+          exercise:exercises(id, name),
+          user:profiles(id, full_name)
+        `)
+        .eq('completion_date', date)
+
+      if (error) throw error
+      return data || []
+    } catch (error) {
+      console.error('Error fetching team completions:', error)
+      return []
+    }
+  },
+
+  // Toggle exercise completion (complete/uncomplete)
+  toggleExerciseCompletion: async (userId, exerciseId, date, completed = true, details = {}) => {
+    try {
+      if (completed) {
+        // Upsert completion
+        const { error } = await supabase
+          .from('exercise_completions')
+          .upsert({
+            user_id: userId,
+            exercise_id: exerciseId,
+            completion_date: date,
+            actual_duration_minutes: details.duration || null,
+            actual_reps: details.reps || null,
+            actual_sets: details.sets || null,
+            notes: details.notes || null,
+            feeling: details.feeling || null,
+            completed_at: new Date().toISOString()
+          }, {
+            onConflict: 'user_id,exercise_id,completion_date'
+          })
+
+        if (error) throw error
+      } else {
+        // Delete completion
+        const { error } = await supabase
+          .from('exercise_completions')
+          .delete()
+          .match({ user_id: userId, exercise_id: exerciseId, completion_date: date })
+
+        if (error) throw error
+      }
+
+      await get().fetchExerciseCompletions(userId, date, date)
+      return { success: true }
+    } catch (error) {
+      console.error('Error toggling exercise completion:', error)
+      toast.error(error.message)
+      return { success: false, error }
+    }
+  },
+
+  // Get completion status for exercises on a date
+  getCompletionStatus: (exerciseId, date) => {
+    const completions = get().exerciseCompletions
+    return completions.find(c =>
+      c.exercise_id === exerciseId &&
+      c.completion_date === date
+    )
+  },
+
+  // Fetch training plans
+  fetchTrainingPlans: async () => {
+    try {
+      const { data, error } = await supabase
+        .from('training_plans')
+        .select(`
+          *,
+          exercises:training_plan_exercises(
+            *,
+            exercise:exercises(id, name, category_id, default_duration_minutes, default_reps, default_sets)
+          )
+        `)
+        .eq('is_active', true)
+        .order('name')
+
+      if (error) throw error
+      set({ trainingPlans: data || [] })
+    } catch (error) {
+      console.error('Error fetching training plans:', error)
+    }
+  },
+
+  // =============================================
+  // PRACTICE DRILLS FUNCTIONS
+  // =============================================
+
+  // Fetch drill categories
+  fetchDrillCategories: async () => {
+    try {
+      const { data, error } = await supabase
+        .from('practice_drill_categories')
+        .select('*')
+        .order('sort_order')
+
+      if (error) throw error
+      set({ drillCategories: data || [] })
+    } catch (error) {
+      console.error('Error fetching drill categories:', error)
+    }
+  },
+
+  // Fetch practice drills
+  fetchDrills: async () => {
+    try {
+      const { data, error } = await supabase
+        .from('practice_drills')
+        .select(`
+          *,
+          category:practice_drill_categories(id, name, icon, color)
+        `)
+        .eq('is_active', true)
+        .order('name')
+
+      if (error) throw error
+      set({ drills: data || [] })
+    } catch (error) {
+      console.error('Error fetching drills:', error)
+    }
+  },
+
+  // Create custom drill
+  createDrill: async (drillData) => {
+    try {
+      const { data, error } = await supabase
+        .from('practice_drills')
+        .insert([{ ...drillData, is_system: false }])
+        .select()
+        .single()
+
+      if (error) throw error
+
+      await get().fetchDrills()
+      toast.success('Drill added!')
+      return { success: true, data }
+    } catch (error) {
+      console.error('Error creating drill:', error)
+      toast.error(error.message)
+      return { success: false, error }
+    }
+  },
+
+  // Assign drills to a practice
+  assignDrillsToPractice: async (practiceId, drillAssignments) => {
+    try {
+      // Delete existing assignments
+      await supabase
+        .from('practice_drill_assignments')
+        .delete()
+        .eq('practice_id', practiceId)
+
+      // Insert new assignments
+      if (drillAssignments.length > 0) {
+        const { error } = await supabase
+          .from('practice_drill_assignments')
+          .insert(drillAssignments.map((d, idx) => ({
+            practice_id: practiceId,
+            drill_id: d.drill_id,
+            duration_minutes: d.duration_minutes,
+            notes: d.notes,
+            sort_order: idx
+          })))
+
+        if (error) throw error
+      }
+
+      toast.success('Practice drills updated!')
+      return { success: true }
+    } catch (error) {
+      console.error('Error assigning drills:', error)
+      toast.error(error.message)
+      return { success: false, error }
+    }
+  },
+
+  // Fetch drills for a practice
+  fetchPracticeDrills: async (practiceId) => {
+    try {
+      const { data, error } = await supabase
+        .from('practice_drill_assignments')
+        .select(`
+          *,
+          drill:practice_drills(*)
+        `)
+        .eq('practice_id', practiceId)
+        .order('sort_order')
+
+      if (error) throw error
+      return data || []
+    } catch (error) {
+      console.error('Error fetching practice drills:', error)
+      return []
     }
   }
 }))

@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { usePracticeStore } from '../store/practiceStore'
 import { useAuthStore } from '../store/authStore'
 import { addMonths, format } from 'date-fns'
+import Icon from './Icon'
+import { parseGoogleMapsLink } from '../utils/parseGoogleMapsLink'
 
 export default function CreatePracticeModal({ isOpen, onClose }) {
   const { createPractice, createRecurringPractice } = usePracticeStore()
@@ -16,7 +18,12 @@ export default function CreatePracticeModal({ isOpen, onClose }) {
     end_time: '',
     location_name: '',
     location_address: '',
+    location_link: '',
     max_capacity: 22,
+    is_visible_to_members: false, // Default to hidden
+    rsvp_visibility_hours: 0, // Default: visible on day of practice
+    food_location_name: '',
+    food_location_link: '',
   })
 
   // Recurrence state
@@ -52,6 +59,24 @@ export default function CreatePracticeModal({ isOpen, onClose }) {
     try {
       let result
 
+      // Parse food location link for coordinates
+      const foodLocationParsed = formData.food_location_link
+        ? parseGoogleMapsLink(formData.food_location_link)
+        : { lat: null, lng: null, name: null }
+
+      // Clean the data - convert empty strings to null for optional fields
+      const cleanedData = {
+        ...formData,
+        end_time: formData.end_time || null,
+        location_address: formData.location_address || null,
+        description: formData.description || null,
+        created_by: user?.id,
+        food_location_name: formData.food_location_name || foodLocationParsed.name || null,
+        food_location_link: formData.food_location_link || null,
+        food_location_lat: foodLocationParsed.lat,
+        food_location_lng: foodLocationParsed.lng,
+      }
+
       if (isRecurring) {
         // Validate recurrence settings
         if ((recurrencePattern === 'weekly' || recurrencePattern === 'biweekly') && recurrenceDays.length === 0) {
@@ -67,18 +92,9 @@ export default function CreatePracticeModal({ isOpen, onClose }) {
           count: recurrenceEndType === 'count' ? recurrenceCount : null
         }
 
-        result = await createRecurringPractice(
-          {
-            ...formData,
-            created_by: user?.id,
-          },
-          recurrenceOptions
-        )
+        result = await createRecurringPractice(cleanedData, recurrenceOptions)
       } else {
-        result = await createPractice({
-          ...formData,
-          created_by: user?.id,
-        })
+        result = await createPractice(cleanedData)
       }
 
       if (result.success) {
@@ -92,7 +108,12 @@ export default function CreatePracticeModal({ isOpen, onClose }) {
           end_time: '',
           location_name: '',
           location_address: '',
+          location_link: '',
           max_capacity: 22,
+          is_visible_to_members: false, // Reset to hidden
+          rsvp_visibility_hours: 0, // Reset to day of practice
+          food_location_name: '',
+          food_location_link: '',
         })
         setIsRecurring(false)
         setRecurrencePattern('weekly')
@@ -122,20 +143,23 @@ export default function CreatePracticeModal({ isOpen, onClose }) {
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="p-6">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold text-gray-900">Create Practice</h2>
-            <button
-              onClick={onClose}
-              className="text-gray-400 hover:text-gray-600 text-2xl"
-            >
-              ×
-            </button>
-          </div>
+    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+        
+        {/* Header */}
+        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+          <h2 className="text-xl font-bold text-slate-900">Create Practice</h2>
+          <button
+            onClick={onClose}
+            className="p-2 bg-white hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 transition-colors shadow-sm border border-slate-200"
+          >
+            <Icon name="close" size={20} />
+          </button>
+        </div>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Content - Scrollable */}
+        <div className="flex-1 overflow-y-auto p-6">
+          <form id="create-practice-form" onSubmit={handleSubmit} className="space-y-6">
             {/* Title */}
             <div>
               <label htmlFor="title" className="label">
@@ -149,7 +173,7 @@ export default function CreatePracticeModal({ isOpen, onClose }) {
                 className="input"
                 value={formData.title}
                 onChange={handleChange}
-                placeholder="Saturday Morning Practice"
+                placeholder="e.g., Saturday Morning Practice"
               />
             </div>
 
@@ -174,23 +198,32 @@ export default function CreatePracticeModal({ isOpen, onClose }) {
               <label htmlFor="practice_type" className="label">
                 Practice Type *
               </label>
-              <select
-                id="practice_type"
-                name="practice_type"
-                required
-                className="input"
-                value={formData.practice_type}
-                onChange={handleChange}
-              >
-                <option value="water">Water Practice</option>
-                <option value="land">Land Training</option>
-                <option value="gym">Gym Session</option>
-                <option value="meeting">Team Meeting</option>
-              </select>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {[
+                  { id: 'water', label: 'Water', icon: 'boat' },
+                  { id: 'land', label: 'Land', icon: 'workouts' },
+                  { id: 'gym', label: 'Gym', icon: 'fire' },
+                  { id: 'meeting', label: 'Meeting', icon: 'announcements' },
+                ].map(type => (
+                  <button
+                    key={type.id}
+                    type="button"
+                    onClick={() => setFormData({ ...formData, practice_type: type.id })}
+                    className={`flex flex-col items-center justify-center p-3 rounded-xl border transition-all ${
+                      formData.practice_type === type.id
+                        ? 'bg-primary-50 border-primary-500 text-primary-700 ring-1 ring-primary-500'
+                        : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
+                    }`}
+                  >
+                    <Icon name={type.icon} size={20} className="mb-1" />
+                    <span className="text-xs font-bold">{type.label}</span>
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Date and Time */}
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
                 <label htmlFor="date" className="label">
                   {isRecurring ? 'Start Date *' : 'Date *'}
@@ -237,19 +270,25 @@ export default function CreatePracticeModal({ isOpen, onClose }) {
             </div>
 
             {/* Recurrence Options */}
-            <div className="border-t pt-4">
-              <label className="flex items-center gap-2 cursor-pointer mb-4">
+            <div className="border-t border-slate-100 pt-6">
+              <label className="flex items-center gap-3 cursor-pointer mb-4 p-3 rounded-xl hover:bg-slate-50 transition-colors">
+                <div className={`w-5 h-5 rounded border flex items-center justify-center ${isRecurring ? 'bg-primary-600 border-primary-600' : 'bg-white border-slate-300'}`}>
+                  {isRecurring && <Icon name="check" size={14} className="text-white" />}
+                </div>
                 <input
                   type="checkbox"
                   checked={isRecurring}
                   onChange={(e) => setIsRecurring(e.target.checked)}
-                  className="w-4 h-4 text-primary-600 rounded focus:ring-primary-500"
+                  className="hidden"
                 />
-                <span className="font-medium text-gray-900">Make this a recurring practice</span>
+                <div>
+                  <span className="block font-bold text-slate-900">Recurring Practice</span>
+                  <span className="block text-xs text-slate-500">Repeat this event daily, weekly, or monthly</span>
+                </div>
               </label>
 
               {isRecurring && (
-                <div className="bg-blue-50 p-4 rounded-lg space-y-4">
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-4 animate-fadeIn">
                   {/* Pattern Selection */}
                   <div>
                     <label className="label">Repeat Pattern</label>
@@ -275,18 +314,20 @@ export default function CreatePracticeModal({ isOpen, onClose }) {
                             key={day}
                             type="button"
                             onClick={() => handleDayToggle(index)}
-                            className={`px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                            className={`w-10 h-10 rounded-lg text-xs font-bold transition-all ${
                               recurrenceDays.includes(index)
-                                ? 'bg-primary-600 text-white border-primary-600'
-                                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                                ? 'bg-primary-600 text-white shadow-md transform scale-105'
+                                : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
                             }`}
                           >
-                            {day}
+                            {day.slice(0, 1)}
                           </button>
                         ))}
                       </div>
                       {recurrenceDays.length === 0 && (
-                        <p className="text-xs text-red-600 mt-1">Please select at least one day</p>
+                        <p className="text-xs text-red-600 mt-2 flex items-center gap-1">
+                          <Icon name="close" size={12} /> Please select at least one day
+                        </p>
                       )}
                     </div>
                   )}
@@ -294,8 +335,8 @@ export default function CreatePracticeModal({ isOpen, onClose }) {
                   {/* End Type Selection */}
                   <div>
                     <label className="label">End Recurrence</label>
-                    <div className="space-y-3">
-                      <label className="flex items-center gap-2 cursor-pointer">
+                    <div className="space-y-3 bg-white p-3 rounded-lg border border-slate-200">
+                      <label className="flex items-center gap-3 cursor-pointer">
                         <input
                           type="radio"
                           name="recurrenceEndType"
@@ -304,18 +345,18 @@ export default function CreatePracticeModal({ isOpen, onClose }) {
                           onChange={(e) => setRecurrenceEndType(e.target.value)}
                           className="text-primary-600 focus:ring-primary-500"
                         />
-                        <span className="text-sm text-gray-700">On date:</span>
+                        <span className="text-sm text-slate-700 w-20">On date:</span>
                         <input
                           type="date"
                           value={recurrenceEndDate}
                           onChange={(e) => setRecurrenceEndDate(e.target.value)}
                           disabled={recurrenceEndType !== 'date'}
-                          className="input text-sm py-1"
+                          className="input text-sm py-1 h-8"
                           min={formData.date}
                         />
                       </label>
 
-                      <label className="flex items-center gap-2 cursor-pointer">
+                      <label className="flex items-center gap-3 cursor-pointer">
                         <input
                           type="radio"
                           name="recurrenceEndType"
@@ -324,68 +365,57 @@ export default function CreatePracticeModal({ isOpen, onClose }) {
                           onChange={(e) => setRecurrenceEndType(e.target.value)}
                           className="text-primary-600 focus:ring-primary-500"
                         />
-                        <span className="text-sm text-gray-700">After</span>
-                        <input
-                          type="number"
-                          value={recurrenceCount}
-                          onChange={(e) => setRecurrenceCount(parseInt(e.target.value) || 1)}
-                          disabled={recurrenceEndType !== 'count'}
-                          min="1"
-                          max="52"
-                          className="input w-20 text-sm py-1"
-                        />
-                        <span className="text-sm text-gray-700">occurrences</span>
+                        <span className="text-sm text-slate-700 w-20">After:</span>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            value={recurrenceCount}
+                            onChange={(e) => setRecurrenceCount(parseInt(e.target.value) || 1)}
+                            disabled={recurrenceEndType !== 'count'}
+                            min="1"
+                            max="52"
+                            className="input w-20 text-sm py-1 h-8"
+                          />
+                          <span className="text-sm text-slate-500">occurrences</span>
+                        </div>
                       </label>
                     </div>
-                  </div>
-
-                  {/* Preview */}
-                  <div className="bg-white p-3 rounded border border-blue-200">
-                    <p className="text-xs font-medium text-blue-800">
-                      {recurrencePattern === 'daily' && 'Creates daily practices'}
-                      {recurrencePattern === 'weekly' && recurrenceDays.length > 0 &&
-                        `Creates practices every ${recurrenceDays.map(d => dayNames[d]).join(', ')}`}
-                      {recurrencePattern === 'biweekly' && recurrenceDays.length > 0 &&
-                        `Creates practices every other week on ${recurrenceDays.map(d => dayNames[d]).join(', ')}`}
-                      {recurrencePattern === 'monthly' && 'Creates monthly practices on the same date'}
-                      {recurrenceEndType === 'date' && recurrenceEndDate && ` until ${recurrenceEndDate}`}
-                      {recurrenceEndType === 'count' && ` for ${recurrenceCount} occurrences`}
-                    </p>
                   </div>
                 </div>
               )}
             </div>
 
-            {/* Location */}
-            <div>
-              <label htmlFor="location_name" className="label">
-                Location Name *
-              </label>
-              <input
-                id="location_name"
-                name="location_name"
-                type="text"
-                required
-                className="input"
-                value={formData.location_name}
-                onChange={handleChange}
-                placeholder="Lake Marina"
-              />
-            </div>
-
-            <div>
-              <label htmlFor="location_address" className="label">
-                Location Address
-              </label>
-              <input
-                id="location_address"
-                name="location_address"
-                type="text"
-                className="input"
-                value={formData.location_address}
-                onChange={handleChange}
-                placeholder="123 Lake Street"
-              />
+            {/* Location & Capacity */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label htmlFor="location_name" className="label">
+                  Location Name *
+                </label>
+                <input
+                  id="location_name"
+                  name="location_name"
+                  type="text"
+                  required
+                  className="input"
+                  value={formData.location_name}
+                  onChange={handleChange}
+                  placeholder="e.g., Lake Marina"
+                />
+              </div>
+              <div>
+                <label htmlFor="location_link" className="label">
+                  Location Link (optional)
+                </label>
+                <input
+                  id="location_link"
+                  name="location_link"
+                  type="url"
+                  className="input"
+                  value={formData.location_link}
+                  onChange={handleChange}
+                  placeholder="Google Maps or other link"
+                />
+              </div>
             </div>
 
             {/* Capacity */}
@@ -402,34 +432,141 @@ export default function CreatePracticeModal({ isOpen, onClose }) {
                 value={formData.max_capacity}
                 onChange={handleChange}
               />
-              <p className="text-sm text-gray-500 mt-1">
-                Default: 22 (20 paddlers + steersperson + drummer)
-              </p>
             </div>
 
-            {/* Buttons */}
-            <div className="flex justify-end gap-3 pt-4">
-              <button
-                type="button"
-                onClick={onClose}
-                className="btn btn-secondary"
-                disabled={isSubmitting}
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="btn btn-primary"
-                disabled={isSubmitting}
-              >
-                {isSubmitting
-                  ? 'Creating...'
-                  : isRecurring
-                    ? 'Create Recurring Series'
-                    : 'Create Practice'}
-              </button>
+            {/* Food Location (Optional) */}
+            <div className="border-t border-slate-100 pt-6">
+              <div className="flex items-center gap-2 mb-3">
+                <Icon name="location" size={18} className="text-amber-500" />
+                <span className="font-bold text-slate-900">Post-Practice Food</span>
+                <span className="text-xs text-slate-400">(optional)</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="food_location_name" className="label">
+                    Restaurant/Place Name
+                  </label>
+                  <input
+                    id="food_location_name"
+                    name="food_location_name"
+                    type="text"
+                    className="input"
+                    value={formData.food_location_name}
+                    onChange={handleChange}
+                    placeholder="e.g., Chipotle, Local Diner"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="food_location_link" className="label">
+                    Google Maps Link
+                  </label>
+                  <input
+                    id="food_location_link"
+                    name="food_location_link"
+                    type="url"
+                    className="input"
+                    value={formData.food_location_link}
+                    onChange={(e) => {
+                      handleChange(e)
+                      // Auto-fill name from link if empty
+                      if (!formData.food_location_name && e.target.value) {
+                        const parsed = parseGoogleMapsLink(e.target.value)
+                        if (parsed.name) {
+                          setFormData(prev => ({ ...prev, food_location_name: parsed.name }))
+                        }
+                      }
+                    }}
+                    placeholder="Paste Google Maps link"
+                  />
+                  {formData.food_location_link && parseGoogleMapsLink(formData.food_location_link).isValid && (
+                    <p className="text-xs text-success-600 mt-1 flex items-center gap-1">
+                      <Icon name="check" size={12} />
+                      Valid Google Maps link
+                      {parseGoogleMapsLink(formData.food_location_link).hasCoordinates && ' (coordinates extracted)'}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* RSVP Visibility Control */}
+            <div className="border-t border-slate-100 pt-6">
+              <div className="flex items-center gap-2 mb-4">
+                <Icon name="clock" size={18} className="text-primary-500" />
+                <h3 className="font-bold text-slate-900">RSVP Visibility</h3>
+              </div>
+              <p className="text-sm text-slate-600 mb-4">
+                Control when regular paddlers can see who's attending. Admins and coaches can always see all RSVPs.
+              </p>
+              <div>
+                <label htmlFor="rsvp_visibility_hours" className="label">
+                  Show RSVPs to paddlers
+                </label>
+                <select
+                  id="rsvp_visibility_hours"
+                  name="rsvp_visibility_hours"
+                  className="input"
+                  value={formData.rsvp_visibility_hours}
+                  onChange={handleChange}
+                >
+                  <option value="0">On day of practice (default)</option>
+                  <option value="6">6 hours before</option>
+                  <option value="12">12 hours before</option>
+                  <option value="24">1 day before</option>
+                  <option value="48">2 days before</option>
+                  <option value="72">3 days before</option>
+                  <option value="168">1 week before</option>
+                </select>
+                <p className="text-xs text-slate-500 mt-2">
+                  Regular paddlers will only see "yes" responses (not "no" or "maybe") after this time.
+                </p>
+              </div>
+            </div>
+
+            {/* Visibility checkbox */}
+            <div className="bg-primary-50 border border-primary-100 rounded-xl p-4">
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={formData.is_visible_to_members}
+                  onChange={(e) => setFormData({ ...formData, is_visible_to_members: e.target.checked })}
+                  className="mt-1 w-4 h-4 text-primary-600 rounded focus:ring-primary-500 border-primary-300"
+                />
+                <div className="flex-1">
+                  <div className="font-bold text-primary-900">Visible to Paddlers</div>
+                  <p className="text-xs text-primary-700 mt-0.5">
+                    {formData.is_visible_to_members
+                      ? 'Paddlers will see this practice immediately.'
+                      : 'Hidden draft. Only admins see this.'}
+                  </p>
+                </div>
+              </label>
             </div>
           </form>
+        </div>
+
+        {/* Footer */}
+        <div className="p-4 border-t border-slate-100 bg-slate-50 rounded-b-2xl flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="btn btn-secondary"
+            disabled={isSubmitting}
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            form="create-practice-form"
+            className="btn btn-primary shadow-lg shadow-primary-600/20"
+            disabled={isSubmitting}
+          >
+            {isSubmitting
+              ? 'Creating...'
+              : isRecurring
+                ? 'Create Series'
+                : 'Create Practice'}
+          </button>
         </div>
       </div>
     </div>
