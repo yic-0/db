@@ -4,6 +4,7 @@ import { useAuthStore } from '../store/authStore'
 import { supabase, pingSupabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 import Icon from './Icon'
+import logo from '../assets/images/logo.png'
 
 export default function Layout() {
   const { profile, signOut, hasRole } = useAuthStore()
@@ -72,7 +73,7 @@ export default function Layout() {
             {/* Logo Area */}
             <div className="flex items-center gap-4">
               <div className="relative">
-                <img src="/images/logo/logo.png" alt="Logo" className="h-11 w-auto object-contain relative z-10" />
+                <img src={logo} alt="Logo" className="h-11 w-auto object-contain relative z-10" />
                 {/* Subtle glow behind logo */}
                 <div className="absolute inset-0 bg-primary-500/10 blur-xl rounded-full scale-150" />
               </div>
