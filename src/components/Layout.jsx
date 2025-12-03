@@ -4,7 +4,7 @@ import { useAuthStore } from '../store/authStore'
 import { supabase, pingSupabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 import Icon from './Icon'
-import logo from '../assets/images/logo.png'
+import logo from '../assets/images/logo.svg'
 
 export default function Layout() {
   const { profile, signOut, hasRole } = useAuthStore()
