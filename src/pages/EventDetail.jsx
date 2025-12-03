@@ -637,13 +637,17 @@ export default function EventDetail() {
         return
       }
 
-      const eventDate = new Date(event.event_date)
+      // Parse date properly to avoid timezone issues
+      const eventDate = parseISO(event.event_date)
       const today = new Date()
-      const daysUntil = differenceInDays(eventDate, today)
+      today.setHours(0, 0, 0, 0)
+      const eventStartOfDay = new Date(eventDate)
+      eventStartOfDay.setHours(0, 0, 0, 0)
+      const daysUntil = differenceInDays(eventStartOfDay, today)
 
       console.log('Weather: Event date check -', { eventDate: event.event_date, daysUntil, hasCoords, venueLat, venueLng })
 
-      // Only fetch weather if event is within 14 days
+      // Only fetch weather if event is within 14 days and not past
       if (daysUntil > 14 || daysUntil < 0) {
         console.log('Weather: Event outside 14-day window')
         return
@@ -698,16 +702,17 @@ export default function EventDetail() {
           return
         }
 
-        // Fetch weather forecast
+        // Fetch weather forecast (temperature in Fahrenheit)
         const weatherResponse = await fetch(
-          `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&forecast_days=14`
+          `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&forecast_days=14&temperature_unit=fahrenheit`
         )
         const weatherData = await weatherResponse.json()
 
         if (weatherData.daily) {
-          // Find the weather for the event date
-          const dateStr = format(eventDate, 'yyyy-MM-dd')
+          // Find the weather for the event date - use original string for exact match
+          const dateStr = event.event_date.split('T')[0] // Handle both "2024-12-03" and "2024-12-03T00:00:00"
           const dayIndex = weatherData.daily.time.indexOf(dateStr)
+          console.log('Weather: Looking for date', dateStr, 'in', weatherData.daily.time.slice(0, 5), 'found at index', dayIndex)
 
           if (dayIndex !== -1) {
             setWeather({
@@ -905,23 +910,29 @@ export default function EventDetail() {
 
   // Countdown calculation
   const getCountdown = () => {
-    const eventDate = new Date(event.event_date)
+    // Parse as local date to avoid timezone issues with YYYY-MM-DD format
+    const eventDate = parseISO(event.event_date)
     const now = new Date()
 
-    if (isPast(eventDate)) {
-      return { isPast: true, text: 'Event has passed' }
+    // Set both dates to start of day for accurate day comparison
+    const eventStartOfDay = new Date(eventDate)
+    eventStartOfDay.setHours(0, 0, 0, 0)
+    const nowStartOfDay = new Date(now)
+    nowStartOfDay.setHours(0, 0, 0, 0)
+
+    if (nowStartOfDay > eventStartOfDay) {
+      return { isPast: true, text: 'Event has passed', days: 0 }
     }
 
-    const days = differenceInDays(eventDate, now)
-    const hours = differenceInHours(eventDate, now) % 24
-    const minutes = differenceInMinutes(eventDate, now) % 60
+    const days = differenceInDays(eventStartOfDay, nowStartOfDay)
 
-    if (days > 0) {
-      return { isPast: false, days, hours, text: `${days}d ${hours}h` }
-    } else if (hours > 0) {
-      return { isPast: false, hours, minutes, text: `${hours}h ${minutes}m` }
+    if (days > 1) {
+      return { isPast: false, days, text: `${days} days` }
+    } else if (days === 1) {
+      return { isPast: false, days: 1, text: '1 day' }
     } else {
-      return { isPast: false, minutes, text: `${minutes}m` }
+      // Today - show hours/minutes until event time (if available) or just "Today"
+      return { isPast: false, days: 0, text: 'Today' }
     }
   }
 
@@ -2532,20 +2543,20 @@ END:VCALENDAR`
           ) : (
             <>
               {/* Day-Before/Day-Of Reminder Banner */}
-              {!countdown.isPast && (isTomorrow(new Date(event.event_date)) || isToday(new Date(event.event_date))) && (
+              {!countdown.isPast && (countdown.days === 0 || countdown.days === 1) && (
                 <div className={`relative overflow-hidden rounded-xl p-4 ${
-                  isToday(new Date(event.event_date))
+                  countdown.days === 0
                     ? 'bg-gradient-to-r from-red-500 via-rose-500 to-red-500'
                     : 'bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500'
                 }`}>
                   <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full blur-2xl" />
                   <div className="relative flex items-start gap-3">
                     <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
-                      <span className="text-2xl">{isToday(new Date(event.event_date)) ? '🏁' : '⏰'}</span>
+                      <span className="text-2xl">{countdown.days === 0 ? '🏁' : '⏰'}</span>
                     </div>
                     <div className="flex-1 min-w-0">
                       <h4 className="font-bold text-white text-lg">
-                        {isToday(new Date(event.event_date)) ? 'Race Day!' : 'Tomorrow is Race Day!'}
+                        {countdown.days === 0 ? 'Race Day!' : 'Tomorrow is Race Day!'}
                       </h4>
                       <div className="text-white/90 text-sm mt-1 space-y-1">
                         {event.arrival_time && (
@@ -2553,6 +2564,14 @@ END:VCALENDAR`
                         )}
                         {event.location && (
                           <p className="truncate">📍 {event.location}</p>
+                        )}
+                        {/* Weather for day-of/day-before */}
+                        {weather && (
+                          <p className="flex items-center gap-2">
+                            <span className="text-lg">{weatherIcons[weather.code] || '🌡️'}</span>
+                            <span className="font-semibold">{weather.tempHigh}°/{weather.tempLow}°F</span>
+                            <span className="text-white/70">• {weather.precipChance}% rain</span>
+                          </p>
                         )}
                         {/* Packing list reminder */}
                         {(() => {

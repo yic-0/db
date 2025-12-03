@@ -12,7 +12,28 @@ import MemberHistoryModal from '../components/MemberHistoryModal'
 import CheckInButton from '../components/CheckInButton'
 import Icon from '../components/Icon'
 import { Linkify } from '../utils/linkify'
-import { format, isToday, differenceInHours, parseISO } from 'date-fns'
+import { format, isToday, differenceInHours, differenceInDays, parseISO } from 'date-fns'
+
+// Weather icons mapping
+const weatherIcons = {
+  0: '☀️', 1: '🌤️', 2: '⛅', 3: '☁️',
+  45: '🌫️', 48: '🌫️',
+  51: '🌧️', 53: '🌧️', 55: '🌧️',
+  61: '🌧️', 63: '🌧️', 65: '🌧️',
+  71: '❄️', 73: '❄️', 75: '❄️',
+  80: '🌦️', 81: '🌦️', 82: '🌦️',
+  95: '⛈️', 96: '⛈️', 99: '⛈️'
+}
+
+const weatherDescriptions = {
+  0: 'Clear', 1: 'Mainly Clear', 2: 'Partly Cloudy', 3: 'Overcast',
+  45: 'Foggy', 48: 'Foggy',
+  51: 'Light Drizzle', 53: 'Drizzle', 55: 'Heavy Drizzle',
+  61: 'Light Rain', 63: 'Rain', 65: 'Heavy Rain',
+  71: 'Light Snow', 73: 'Snow', 75: 'Heavy Snow',
+  80: 'Light Showers', 81: 'Showers', 82: 'Heavy Showers',
+  95: 'Thunderstorm', 96: 'Thunderstorm', 99: 'Severe Thunderstorm'
+}
 
 export default function Practices() {
   const {
@@ -58,6 +79,10 @@ export default function Practices() {
   const [expandedMemberNotes, setExpandedMemberNotes] = useState({})
   const [rosterFilter, setRosterFilter] = useState('all') // 'all', 'yes', 'attended', 'no-shows'
 
+  // Weather state
+  const [weather, setWeather] = useState(null)
+  const [weatherLoading, setWeatherLoading] = useState(false)
+
   // Get privacy settings from database
   const showAttendeeCount = settings['privacy_show_attendee_count'] ?? true
   const showAttendeeNames = settings['privacy_show_attendee_names'] ?? true
@@ -100,6 +125,96 @@ export default function Practices() {
       setPracticeNotes(selectedPractice.coach_notes || '')
     }
   }, [selectedPractice, fetchRSVPs])
+
+  // Fetch weather for selected practice
+  useEffect(() => {
+    const fetchWeather = async () => {
+      if (!selectedPractice?.date) {
+        setWeather(null)
+        return
+      }
+
+      // Parse coordinates
+      const lat = selectedPractice?.location_lat ? parseFloat(selectedPractice.location_lat) : null
+      const lng = selectedPractice?.location_lng ? parseFloat(selectedPractice.location_lng) : null
+      const hasCoords = lat !== null && lng !== null && !isNaN(lat) && !isNaN(lng)
+
+      // Need coordinates or location name to fetch weather
+      if (!hasCoords && !selectedPractice?.location_name && !selectedPractice?.location_address) {
+        setWeather(null)
+        return
+      }
+
+      // Parse date to avoid timezone issues
+      const practiceDate = parseISO(selectedPractice.date)
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      const practiceStartOfDay = new Date(practiceDate)
+      practiceStartOfDay.setHours(0, 0, 0, 0)
+      const daysUntil = differenceInDays(practiceStartOfDay, today)
+
+      // Only fetch weather if practice is within 14 days and not past
+      if (daysUntil > 14 || daysUntil < 0) {
+        setWeather(null)
+        return
+      }
+
+      setWeatherLoading(true)
+      try {
+        let latitude, longitude
+
+        if (hasCoords) {
+          latitude = lat
+          longitude = lng
+        } else {
+          // Try geocoding the location
+          const locationStr = selectedPractice.location_address || selectedPractice.location_name
+          const geoResponse = await fetch(
+            `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(locationStr)}&count=1`
+          )
+          const geoData = await geoResponse.json()
+
+          if (!geoData?.results || geoData.results.length === 0) {
+            setWeatherLoading(false)
+            setWeather(null)
+            return
+          }
+
+          latitude = geoData.results[0].latitude
+          longitude = geoData.results[0].longitude
+        }
+
+        // Fetch weather forecast (temperature in Fahrenheit)
+        const weatherResponse = await fetch(
+          `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&forecast_days=14&temperature_unit=fahrenheit`
+        )
+        const weatherData = await weatherResponse.json()
+
+        if (weatherData.daily) {
+          const dateStr = selectedPractice.date.split('T')[0]
+          const dayIndex = weatherData.daily.time.indexOf(dateStr)
+
+          if (dayIndex !== -1) {
+            setWeather({
+              code: weatherData.daily.weathercode[dayIndex],
+              tempHigh: Math.round(weatherData.daily.temperature_2m_max[dayIndex]),
+              tempLow: Math.round(weatherData.daily.temperature_2m_min[dayIndex]),
+              precipChance: weatherData.daily.precipitation_probability_max[dayIndex]
+            })
+          } else {
+            setWeather(null)
+          }
+        }
+      } catch (error) {
+        console.error('Weather fetch error:', error)
+        setWeather(null)
+      } finally {
+        setWeatherLoading(false)
+      }
+    }
+
+    fetchWeather()
+  }, [selectedPractice?.id, selectedPractice?.date, selectedPractice?.location_lat, selectedPractice?.location_lng])
 
   // Fetch RSVPs for all practices when practices are loaded
   useEffect(() => {
@@ -509,6 +624,42 @@ export default function Practices() {
             </div>
           </div>
         </div>
+
+        {/* Weather Card */}
+        {weather && (
+          <div className="p-4 bg-gradient-to-br from-sky-50 to-blue-50 rounded-xl border border-sky-100">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="text-3xl">{weatherIcons[weather.code] || '🌡️'}</span>
+                <div>
+                  <div className="font-bold text-slate-900">
+                    {weatherDescriptions[weather.code] || 'Weather'}
+                  </div>
+                  <div className="text-sm text-slate-600">
+                    {weather.tempHigh}° / {weather.tempLow}°F
+                  </div>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="flex items-center gap-1 text-sm text-slate-600">
+                  <Icon name="droplet" size={14} className="text-sky-500" />
+                  {weather.precipChance}% rain
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        {weatherLoading && (
+          <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 animate-pulse">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-slate-200 rounded-lg" />
+              <div className="flex-1">
+                <div className="h-4 bg-slate-200 rounded w-24 mb-2" />
+                <div className="h-3 bg-slate-200 rounded w-16" />
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Stats Dashboard - Compact with icons */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3">

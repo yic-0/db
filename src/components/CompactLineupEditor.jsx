@@ -18,6 +18,7 @@ export default function CompactLineupEditor({
   const [hoveredMember, setHoveredMember] = useState(null)
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 })
   const containerRef = useRef(null)
+  const isDraggingRef = useRef(false)
 
   // Boat positions
   const [boat, setBoat] = useState({
@@ -102,8 +103,21 @@ export default function CompactLineupEditor({
     return `${parts[0].slice(0, 5)} ${parts[parts.length - 1][0]}.`
   }
 
+  // Track drag lifecycle to prevent "Cannot stop drag when no active drag" error
+  const handleDragStart = () => {
+    isDraggingRef.current = true
+  }
+
+  const handleBeforeCapture = () => {
+    isDraggingRef.current = true
+  }
+
   // Handle drag end
   const handleDragEnd = (result) => {
+    // Guard against drag end when no drag is active
+    if (!isDraggingRef.current) return
+    isDraggingRef.current = false
+
     const { source, destination, draggableId } = result
     if (!destination) return
 
@@ -159,6 +173,11 @@ export default function CompactLineupEditor({
     const isF = member.gender?.toLowerCase() === 'female'
     const lb = member.weight_kg ? Math.round(member.weight_kg * 2.205) : '?'
 
+    // Get preferred side indicator
+    const side = member.preferred_side?.toLowerCase()
+    const sideLabel = side === 'left' ? 'L' : side === 'right' ? 'R' : side === 'both' ? 'B' : null
+    const sideColor = side === 'left' ? 'bg-indigo-600' : side === 'right' ? 'bg-orange-600' : 'bg-slate-600'
+
     return (
       <Draggable draggableId={member.id} index={index}>
         {(provided, snapshot) => (
@@ -182,6 +201,12 @@ export default function CompactLineupEditor({
             `}
             style={{ ...provided.draggableProps.style, touchAction: 'none' }}
           >
+            {/* Side indicator - show first for quick scanning */}
+            {!mini && sideLabel && (
+              <span className={`rounded-full flex items-center justify-center font-bold ${sideColor} w-3 h-3 text-[8px]`}>
+                {sideLabel}
+              </span>
+            )}
             <span className={`truncate ${mini ? 'max-w-[35px]' : 'max-w-[50px]'}`}>{shortName(member.full_name)}</span>
             {!mini && <span className="opacity-80">{lb}</span>}
             <span className={`rounded-full flex items-center justify-center font-bold ${isF ? 'bg-pink-600' : isM ? 'bg-blue-600' : 'bg-slate-500'} ${mini ? 'w-2.5 h-2.5 text-[6px]' : 'w-3 h-3 text-[8px]'}`}>
@@ -231,7 +256,7 @@ export default function CompactLineupEditor({
   }
 
   return (
-    <DragDropContext onDragEnd={handleDragEnd}>
+    <DragDropContext onBeforeCapture={handleBeforeCapture} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       <div ref={containerRef} className={`compact-lineup ${className}`}>
         {/* Stats Bar */}
         <div className="flex items-center justify-between gap-2 mb-2 px-2 py-1.5 bg-slate-800 rounded-lg text-white text-[10px]">
@@ -367,16 +392,26 @@ export default function CompactLineupEditor({
           </button>
         )}
 
-        {/* Weight Legend */}
-        <div className="mt-2 flex items-center justify-center gap-1 text-[9px] text-slate-500">
-          <span>Light</span>
-          <div className="flex gap-0.5">
-            <div className="w-4 h-2 rounded-full bg-sky-400" />
-            <div className="w-4 h-2 rounded-full bg-emerald-400" />
-            <div className="w-4 h-2 rounded-full bg-amber-400" />
-            <div className="w-4 h-2 rounded-full bg-rose-400" />
+        {/* Legends */}
+        <div className="mt-2 flex flex-wrap items-center justify-center gap-3 text-[9px] text-slate-500">
+          {/* Weight Legend */}
+          <div className="flex items-center gap-1">
+            <span>Light</span>
+            <div className="flex gap-0.5">
+              <div className="w-4 h-2 rounded-full bg-sky-400" />
+              <div className="w-4 h-2 rounded-full bg-emerald-400" />
+              <div className="w-4 h-2 rounded-full bg-amber-400" />
+              <div className="w-4 h-2 rounded-full bg-rose-400" />
+            </div>
+            <span>Heavy</span>
           </div>
-          <span>Heavy</span>
+          {/* Side Preference Legend */}
+          <div className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded-full bg-indigo-600 text-white text-[7px] font-bold flex items-center justify-center">L</span>
+            <span className="w-3 h-3 rounded-full bg-orange-600 text-white text-[7px] font-bold flex items-center justify-center">R</span>
+            <span className="w-3 h-3 rounded-full bg-slate-600 text-white text-[7px] font-bold flex items-center justify-center">B</span>
+            <span>Side</span>
+          </div>
         </div>
       </div>
     </DragDropContext>

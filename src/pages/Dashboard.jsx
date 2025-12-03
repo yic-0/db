@@ -4,9 +4,31 @@ import { usePracticeStore } from '../store/practiceStore'
 import { useRosterStore } from '../store/rosterStore'
 import { useWorkoutStore } from '../store/workoutStore'
 import { useCalendarStore } from '../store/calendarStore'
+import { useEventStore } from '../store/eventStore'
 import Icon from '../components/Icon'
 import { Link } from 'react-router-dom'
-import { format, isAfter, isBefore, addDays, subDays, differenceInDays } from 'date-fns'
+import { format, isAfter, isBefore, addDays, subDays, differenceInDays, parseISO, isToday } from 'date-fns'
+
+// Weather icons mapping
+const weatherIcons = {
+  0: '☀️', 1: '🌤️', 2: '⛅', 3: '☁️',
+  45: '🌫️', 48: '🌫️',
+  51: '🌧️', 53: '🌧️', 55: '🌧️',
+  61: '🌧️', 63: '🌧️', 65: '🌧️',
+  71: '❄️', 73: '❄️', 75: '❄️',
+  80: '🌦️', 81: '🌦️', 82: '🌦️',
+  95: '⛈️', 96: '⛈️', 99: '⛈️'
+}
+
+const weatherDescriptions = {
+  0: 'Clear', 1: 'Mainly Clear', 2: 'Partly Cloudy', 3: 'Overcast',
+  45: 'Foggy', 48: 'Foggy',
+  51: 'Light Drizzle', 53: 'Drizzle', 55: 'Heavy Drizzle',
+  61: 'Light Rain', 63: 'Rain', 65: 'Heavy Rain',
+  71: 'Light Snow', 73: 'Snow', 75: 'Heavy Snow',
+  80: 'Light Showers', 81: 'Showers', 82: 'Heavy Showers',
+  95: 'Thunderstorm', 96: 'Thunderstorm', 99: 'Severe Thunderstorm'
+}
 
 export default function Dashboard() {
   const { user, profile } = useAuthStore()
@@ -14,8 +36,10 @@ export default function Dashboard() {
   const { members, fetchMembers } = useRosterStore()
   const { workoutLogs, fetchWorkoutLogs } = useWorkoutStore()
   const { confirmedRaces, fetchConfirmedRaces } = useCalendarStore()
+  const { events, fetchEvents } = useEventStore()
 
   const [loading, setLoading] = useState(true)
+  const [todayWeather, setTodayWeather] = useState({}) // { itemId: weatherData }
 
   useEffect(() => {
     const loadData = async () => {
@@ -25,7 +49,8 @@ export default function Dashboard() {
           fetchPractices(),
           fetchMembers(),
           user && fetchWorkoutLogs(user.id),
-          fetchConfirmedRaces()
+          fetchConfirmedRaces(),
+          fetchEvents()
         ])
       } catch (error) {
         console.error('Error loading dashboard data:', error)
@@ -57,11 +82,137 @@ export default function Dashboard() {
     loadRSVPs()
   }, [practices, user?.id])
 
+  // Today's schedule items (practices + events)
+  const todayItems = useMemo(() => {
+    const items = []
+    const today = new Date()
+
+    // Today's practices
+    practices.forEach(p => {
+      const practiceDate = parseISO(p.date)
+      if (isToday(practiceDate)) {
+        items.push({
+          id: `practice-${p.id}`,
+          type: 'practice',
+          title: p.title,
+          time: p.start_time,
+          endTime: p.end_time,
+          location: p.location_name || p.location_address,
+          lat: p.location_lat,
+          lng: p.location_lng,
+          link: `/practices`,
+          practiceType: p.practice_type
+        })
+      }
+    })
+
+    // Today's events (races, etc.)
+    events.forEach(e => {
+      const eventDate = parseISO(e.event_date)
+      if (isToday(eventDate)) {
+        items.push({
+          id: `event-${e.id}`,
+          type: 'event',
+          eventType: e.event_type,
+          title: e.title,
+          time: e.start_time,
+          endTime: e.end_time,
+          location: e.location,
+          lat: e.venue_lat,
+          lng: e.venue_lng,
+          link: `/events/${e.id}`
+        })
+      }
+    })
+
+    // Sort by time
+    return items.sort((a, b) => {
+      if (!a.time) return 1
+      if (!b.time) return -1
+      return a.time.localeCompare(b.time)
+    })
+  }, [practices, events])
+
+  // Fetch weather for today's items
+  useEffect(() => {
+    const fetchTodayWeather = async () => {
+      if (todayItems.length === 0) return
+
+      const weatherPromises = todayItems.map(async (item) => {
+        const lat = item.lat ? parseFloat(item.lat) : null
+        const lng = item.lng ? parseFloat(item.lng) : null
+        const hasCoords = lat !== null && lng !== null && !isNaN(lat) && !isNaN(lng)
+
+        if (!hasCoords && !item.location) return { id: item.id, weather: null }
+
+        try {
+          let latitude, longitude
+
+          if (hasCoords) {
+            latitude = lat
+            longitude = lng
+          } else {
+            // Try geocoding
+            const geoResponse = await fetch(
+              `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(item.location)}&count=1`
+            )
+            const geoData = await geoResponse.json()
+            if (!geoData?.results?.[0]) return { id: item.id, weather: null }
+            latitude = geoData.results[0].latitude
+            longitude = geoData.results[0].longitude
+          }
+
+          const weatherResponse = await fetch(
+            `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&forecast_days=1&temperature_unit=fahrenheit`
+          )
+          const weatherData = await weatherResponse.json()
+
+          if (weatherData.daily) {
+            return {
+              id: item.id,
+              weather: {
+                code: weatherData.daily.weathercode[0],
+                tempHigh: Math.round(weatherData.daily.temperature_2m_max[0]),
+                tempLow: Math.round(weatherData.daily.temperature_2m_min[0]),
+                precipChance: weatherData.daily.precipitation_probability_max[0]
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Weather fetch error for', item.id, error)
+        }
+        return { id: item.id, weather: null }
+      })
+
+      const results = await Promise.all(weatherPromises)
+      const weatherMap = {}
+      results.forEach(r => {
+        if (r.weather) weatherMap[r.id] = r.weather
+      })
+      setTodayWeather(weatherMap)
+    }
+
+    fetchTodayWeather()
+  }, [todayItems])
+
   const getGreeting = () => {
     const hour = new Date().getHours()
     if (hour < 12) return 'Good morning'
     if (hour < 18) return 'Good afternoon'
     return 'Good evening'
+  }
+
+  const formatTime = (timeStr) => {
+    if (!timeStr) return ''
+    try {
+      const [hours, minutes] = timeStr.split(':')
+      const hour = parseInt(hours)
+      const ampm = hour >= 12 ? 'PM' : 'AM'
+      const displayHour = hour % 12 || 12
+      return `${displayHour}:${minutes} ${ampm}`
+    } catch {
+      return timeStr
+    }
   }
 
   // Calculate real statistics
@@ -284,6 +435,91 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* Today's Schedule - Only show if there are items today */}
+      {todayItems.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="px-2.5 py-1 bg-primary-600 text-white text-xs font-bold uppercase tracking-wider rounded-full">
+                Today
+              </span>
+              <h2 className="text-lg font-bold text-slate-900">{format(new Date(), 'EEEE, MMM d')}</h2>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {todayItems.map(item => {
+              const itemWeather = todayWeather[item.id]
+              const isPractice = item.type === 'practice'
+
+              return (
+                <Link
+                  key={item.id}
+                  to={item.link}
+                  className={`card p-0 overflow-hidden hover:shadow-lg transition-all group ${
+                    isPractice
+                      ? 'border-l-4 border-l-primary-500'
+                      : item.eventType === 'race'
+                        ? 'border-l-4 border-l-accent-500'
+                        : 'border-l-4 border-l-amber-500'
+                  }`}
+                >
+                  <div className="p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                            isPractice
+                              ? 'bg-primary-100 text-primary-700'
+                              : item.eventType === 'race'
+                                ? 'bg-accent-100 text-accent-700'
+                                : 'bg-amber-100 text-amber-700'
+                          }`}>
+                            {isPractice ? (item.practiceType || 'Practice') : (item.eventType || 'Event')}
+                          </span>
+                        </div>
+                        <h3 className="font-bold text-slate-900 group-hover:text-primary-600 transition-colors truncate">
+                          {item.title}
+                        </h3>
+                        <div className="flex items-center gap-3 mt-2 text-sm text-slate-500">
+                          {item.time && (
+                            <span className="flex items-center gap-1">
+                              <Icon name="clock" size={14} className="text-slate-400" />
+                              {formatTime(item.time)}
+                              {item.endTime && ` - ${formatTime(item.endTime)}`}
+                            </span>
+                          )}
+                          {item.location && (
+                            <span className="flex items-center gap-1 truncate">
+                              <Icon name="location" size={14} className="text-slate-400" />
+                              <span className="truncate">{item.location}</span>
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Weather Badge */}
+                      {itemWeather && (
+                        <div className="flex-shrink-0 text-center p-2 bg-gradient-to-br from-sky-50 to-blue-50 rounded-xl border border-sky-100">
+                          <span className="text-2xl block">{weatherIcons[itemWeather.code] || '🌡️'}</span>
+                          <div className="text-xs font-bold text-slate-700 mt-1">
+                            {itemWeather.tempHigh}°/{itemWeather.tempLow}°
+                          </div>
+                          <div className="text-[10px] text-slate-500 flex items-center justify-center gap-0.5">
+                            <Icon name="droplet" size={10} className="text-sky-500" />
+                            {itemWeather.precipChance}%
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </Link>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Quick Stats Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">

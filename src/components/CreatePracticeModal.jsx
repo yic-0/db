@@ -3,6 +3,7 @@ import { usePracticeStore } from '../store/practiceStore'
 import { useAuthStore } from '../store/authStore'
 import { addMonths, format } from 'date-fns'
 import Icon from './Icon'
+import AddressSearchInput from './AddressSearchInput'
 import { parseGoogleMapsLink } from '../utils/parseGoogleMapsLink'
 
 export default function CreatePracticeModal({ isOpen, onClose }) {
@@ -19,6 +20,8 @@ export default function CreatePracticeModal({ isOpen, onClose }) {
     location_name: '',
     location_address: '',
     location_link: '',
+    location_lat: null,
+    location_lng: null,
     max_capacity: 22,
     is_visible_to_members: false, // Default to hidden
     rsvp_visibility_hours: 0, // Default: visible on day of practice
@@ -109,6 +112,8 @@ export default function CreatePracticeModal({ isOpen, onClose }) {
           location_name: '',
           location_address: '',
           location_link: '',
+          location_lat: null,
+          location_lng: null,
           max_capacity: 22,
           is_visible_to_members: false, // Reset to hidden
           rsvp_visibility_hours: 0, // Reset to day of practice
@@ -385,8 +390,8 @@ export default function CreatePracticeModal({ isOpen, onClose }) {
               )}
             </div>
 
-            {/* Location & Capacity */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Location */}
+            <div className="space-y-4">
               <div>
                 <label htmlFor="location_name" className="label">
                   Location Name *
@@ -402,20 +407,21 @@ export default function CreatePracticeModal({ isOpen, onClose }) {
                   placeholder="e.g., Lake Marina"
                 />
               </div>
-              <div>
-                <label htmlFor="location_link" className="label">
-                  Location Link (optional)
-                </label>
-                <input
-                  id="location_link"
-                  name="location_link"
-                  type="url"
-                  className="input"
-                  value={formData.location_link}
-                  onChange={handleChange}
-                  placeholder="Google Maps or other link"
-                />
-              </div>
+              <AddressSearchInput
+                value={formData.location_address}
+                onChange={(value, coords) => {
+                  setFormData(prev => ({
+                    ...prev,
+                    location_address: value,
+                    location_lat: coords?.lat || null,
+                    location_lng: coords?.lng || null
+                  }))
+                }}
+                label="Location Address"
+                placeholder="Search for address or choose on map..."
+                showMapPicker={true}
+                showCoords={true}
+              />
             </div>
 
             {/* Capacity */}

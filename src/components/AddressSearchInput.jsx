@@ -57,37 +57,37 @@ function MapCenterUpdater({ center, zoom }) {
   return null
 }
 
-// Reverse geocode coordinates to address using Nominatim
+// Reverse geocode coordinates to address using BigDataCloud (CORS-friendly)
 const reverseGeocode = async (lat, lng) => {
   try {
     const response = await fetch(
-      `https://nominatim.openstreetmap.org/reverse?` +
-      `format=json&lat=${lat}&lon=${lng}&addressdetails=1`,
-      {
-        headers: {
-          'Accept-Language': 'en',
-          'User-Agent': 'TeamOrganizationApp/1.0'
-        }
-      }
+      `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`
     )
 
     if (!response.ok) return null
 
     const data = await response.json()
-    if (!data || data.error) return null
+    if (!data) return null
 
-    // Create a shorter display name
+    // Create a shorter display name from BigDataCloud response
     const shortName = [
-      data.address?.road || data.address?.neighbourhood,
-      data.address?.city || data.address?.town || data.address?.village,
-      data.address?.state
+      data.locality || data.city,
+      data.principalSubdivision,
+      data.countryCode
+    ].filter(Boolean).join(', ')
+
+    // Create full display name
+    const fullName = [
+      data.locality || data.city,
+      data.principalSubdivision,
+      data.countryName
     ].filter(Boolean).join(', ')
 
     return {
-      display_name: data.display_name,
-      short_name: shortName || data.display_name.split(',').slice(0, 3).join(','),
-      lat: parseFloat(data.lat),
-      lng: parseFloat(data.lon)
+      display_name: fullName,
+      short_name: shortName || fullName,
+      lat: lat,
+      lng: lng
     }
   } catch (error) {
     console.error('Reverse geocoding error:', error)

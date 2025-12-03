@@ -3,6 +3,7 @@ import toast from 'react-hot-toast'
 import { usePracticeStore } from '../store/practiceStore'
 import { useAuthStore } from '../store/authStore'
 import Icon from './Icon'
+import AddressSearchInput from './AddressSearchInput'
 import { parseGoogleMapsLink } from '../utils/parseGoogleMapsLink'
 
 export default function EditPracticeModal({ isOpen, onClose, practice }) {
@@ -19,6 +20,8 @@ export default function EditPracticeModal({ isOpen, onClose, practice }) {
     location_name: '',
     location_address: '',
     location_link: '',
+    location_lat: null,
+    location_lng: null,
     max_capacity: 22,
     status: 'scheduled',
     is_visible_to_members: false,
@@ -47,6 +50,8 @@ export default function EditPracticeModal({ isOpen, onClose, practice }) {
         location_name: practice.location_name || '',
         location_address: practice.location_address || '',
         location_link: practice.location_link || '',
+        location_lat: practice.location_lat || null,
+        location_lng: practice.location_lng || null,
         max_capacity: practice.max_capacity || 22,
         status: practice.status || 'scheduled',
         is_visible_to_members: practice.is_visible_to_members || false,
@@ -346,8 +351,8 @@ export default function EditPracticeModal({ isOpen, onClose, practice }) {
               </div>
             </div>
 
-            {/* Location & Capacity */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Location */}
+            <div className="space-y-4">
               <div>
                 <label htmlFor="location_name" className="label">
                   Location Name *
@@ -362,20 +367,21 @@ export default function EditPracticeModal({ isOpen, onClose, practice }) {
                   onChange={handleChange}
                 />
               </div>
-              <div>
-                <label htmlFor="location_link" className="label">
-                  Location Link (optional)
-                </label>
-                <input
-                  id="location_link"
-                  name="location_link"
-                  type="url"
-                  className="input"
-                  value={formData.location_link}
-                  onChange={handleChange}
-                  placeholder="Google Maps or other link"
-                />
-              </div>
+              <AddressSearchInput
+                value={formData.location_address}
+                onChange={(value, coords) => {
+                  setFormData(prev => ({
+                    ...prev,
+                    location_address: value,
+                    location_lat: coords?.lat || prev.location_lat,
+                    location_lng: coords?.lng || prev.location_lng
+                  }))
+                }}
+                label="Location Address"
+                placeholder="Search for address or choose on map..."
+                showMapPicker={true}
+                showCoords={true}
+              />
             </div>
 
             {/* Capacity */}

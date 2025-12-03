@@ -73,7 +73,7 @@ export default function Experimental() {
       {/* Header - Compact */}
       <div className="bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600 rounded-xl p-4 text-white">
         <div className="flex items-center gap-2">
-          <span className="text-2xl">🧪</span>
+          <Icon name="beaker" size={28} className="text-white" />
           <div>
             <h1 className="text-lg font-bold">Experimental Lab</h1>
             <p className="text-white/70 text-xs">Test new features</p>
